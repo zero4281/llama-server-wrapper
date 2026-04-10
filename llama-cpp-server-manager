@@ -31,7 +31,7 @@ def main():
     if args.print_command:
         print(' '.join(cmd))
     else:
-        subprocess.run(cmd, shell=True)
+        subprocess.run(' '.join(cmd), shell=True)
 
 if __name__ == '__main__':
     main()
