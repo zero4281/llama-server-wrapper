@@ -1,0 +1,20 @@
+{
+  "models": {
+    "Qwen2.5-0.5B-Instruct": {
+      "name": "Qwen2.5 0.5B Instruct (0.5B 96k)",
+      "config": {
+        "hf-repo": "bartowski/Qwen2.5-0.5B-Instruct-GGUF:F16",
+        "ctx-size": 98304,
+        "presence-penalty": 0,
+        "repeat-penalty": 1,
+        "temp": 0.6,
+        "top-k": 20,
+        "top-p": 0.95,
+        "min-p": 0,
+        "jinja": "",
+        "host": "0.0.0.0",
+        "port": 11235
+      }
+    }
+  }
+}

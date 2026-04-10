@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import subprocess
+import sys
+
+def main():
+    parser = argparse.ArgumentParser(description='Generate llama-server or llama-cli command')
+    parser.add_argument('--model', required=True, help='Model identifier')
+    parser.add_argument('--print-command', action='store_true', help='Print command only, do not execute')
+    parser.add_argument('--cli', action='store_true', help='Run llama-cli instead of llama-server')
+    args = parser.parse_args()
+
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+
+    model = config['models'].get(args.model)
+    if not model:
+        print(f"Error: Model '{args.model}' not found in config.json", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = model['config']
+    cmd = ['./llama-cpp/llama-cli' if args.cli else './llama-cpp/llama-server']
+    for key, value in cfg.items():
+        if value:  # Skip empty values
+            # Filter out server-specific arguments for llama-cli
+            if args.cli and key in ('host', 'port'):
+                continue
+            cmd.append(f"--{key} {value}")
+
+    if args.print_command:
+        print(' '.join(cmd))
+    else:
+        subprocess.run(cmd, shell=True)
+
+if __name__ == '__main__':
+    main()
