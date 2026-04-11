@@ -44,7 +44,10 @@ llama-server-wrapper/
 ├── main.py                # Entry point
 ├── llama_updater.py       # llama.cpp download/update module
 ├── runner.py              # Run script
+├── requirements.txt       # Python dependencies
 ├── config.json            # Runtime configuration (auto-generated if missing)
+├── .venv/                 # Python virtual environment (created by user)
+│   └── bin/activate
 ├── llama-cpp/             # Extracted llama.cpp release binaries
 │   └── llama-server       # (llama-server.exe on Windows)
 └── llama-server.log       # llama-server output log (when enabled)
@@ -97,16 +100,27 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 ### 4.1 Language & purpose
 
 - Written in Bash.
-- Acts as a thin entry-point shim that invokes `main.py` with all arguments forwarded.
+- Activates the Python virtual environment, then invokes `main.py` with all arguments forwarded.
 
 ### 4.2 Behaviour
 
-- Calls `main.py` using the Python interpreter, passing through all command-line arguments unchanged:
+- Before launching `main.py`, check whether `.venv/bin/activate` exists in the project directory.
+  - If it **does not exist**, print a message prompting the user to create the virtual environment and exit without launching `main.py`:
+    ```
+    Virtual environment not found. Please create it first:
+      python3 -m venv .venv
+      source .venv/bin/activate
+      pip install -r requirements.txt
+    ```
+  - If it **exists**, activate it with:
+    ```bash
+    source .venv/bin/activate
+    ```
+- After activation, call `main.py` using the Python interpreter, passing through all command-line arguments unchanged:
   ```bash
   python3 main.py "$@"
   ```
 - Must be executable (`chmod +x`).
-- Must not contain any logic beyond launching `main.py`.
 
 ---
 
