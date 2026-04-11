@@ -1,13 +1,11 @@
 {
-  "options": {
-    "logfile": "./llama-server-wrapper.log"
-  },
+  "options": {},
   "llama-server": {
-    "options": {
-      "host": "0.0.0.0",
-      "port": "11235",
-      "models-max": "1",
-      "log-file": "llama-server.log"
-    }
+    "options": {}
+  },
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "file": null
   }
 }

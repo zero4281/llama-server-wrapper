@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# llama-server-wrapper — entry point shim
+
+# Get directory where this script is located
+SCRIPT_DIR="${0%/*}"
+
+# If SCRIPT_DIR is empty (script is in current directory), use current directory
+if [ -z "$SCRIPT_DIR" ]; then
+    SCRIPT_DIR="$(pwd)"
+fi
+
+# Forward all arguments to main.py
+python3 "${SCRIPT_DIR}/main_wrapper.py" "$@"

@@ -13,7 +13,7 @@
 ### On Windows
 `.venv\Scripts\activate`
 
-### Install the Hugginface Hub API
+### Install the Hugginface Hub CLI for model managment
 `pip install hf-cli`
 
 ## Run the Code
