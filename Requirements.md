@@ -158,7 +158,13 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 3. If `--self-update`: perform update and restart; all other arguments are ignored.
 4. If `--install-llama` or `--update-llama`: instantiate `LlamaUpdater` and call the appropriate method; exit on completion.
 5. If `--stop-server`: signal `runner.py` to stop `llama-server`; exit on completion.
-6. Otherwise: load `config.json`, merge pass-through args, and invoke `Runner`.
+6. Otherwise: check whether the `./llama-cpp` directory exists.
+   - If it **does not exist**, print a message prompting the user to install llama.cpp and exit with a non-zero status code:
+     ```
+     llama-cpp not found. Please install it first:
+       llama-server-wrapper --install-llama
+     ```
+   - If it **exists**, load `config.json`, merge pass-through args, and invoke `Runner`.
 
 ---
 

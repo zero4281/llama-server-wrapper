@@ -17,5 +17,4 @@
 `pip install hf-cli`
 
 ## Run the Code
-`source .venv/bin/activate`  
 `./llama-server-wrapper`
