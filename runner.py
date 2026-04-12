@@ -225,9 +225,12 @@ def stop_server() -> int:
     except ProcessLookupError:
         # Process already exited
         print("Process already exited")
+        # Remove PID file before returning
+        if PID_FILE.exists():
+            PID_FILE.unlink()
         return 0
 
-        # Wait up to 60 seconds
+    # Wait up to 60 seconds
         for i in range(60):
             try:
                 if sys.platform == 'win32':
