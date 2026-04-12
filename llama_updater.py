@@ -224,7 +224,7 @@ def parse_asset_name(name: str) -> Dict[str, str]:
     
     # Try new format first: llama-{tag}-bin-{platform}-{arch}
     # Tag can contain hyphens, so we need a more flexible pattern
-    new_pattern = r"^llama-[^-]+-bin-(\w+)-(\w+)$"
+    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-(\w+)-(\w+)$"
     match = re.match(new_pattern, base_name)
     if match:
         platform = match.group(1).lower()

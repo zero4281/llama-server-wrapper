@@ -10,7 +10,7 @@
 Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Don't update the Markdown files.
 
 ## Create Unit Test Prompt
-Read `./Requirements.md` and `./Plan.md`.  Update or create unit tests with [unittest](https://docs.python.org/3/library/unittest.html) and save them to `./Unit Tests`.  The unit tests are saved to `./Unit Tests`, don't create unit tests for these files.
+Read `./Requirements.md` and `./Plan.md`.  Scan the code base, including `./Unit Tests`, and then update or create unit tests with [unittest](https://docs.python.org/3/library/unittest.html) and save them to `./Unit Tests`.  The unit tests are saved to `./Unit Tests`, don't create unit tests for these files.  Only create unit tests for main.py and top level class functions related to command line arguments and `config.json`.
 
 ## Run Unit Test Prompt
 Run the unit tests in `./Unit Tests`.  Use the results of the unit tests to create `./Bugs.md`.
