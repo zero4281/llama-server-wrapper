@@ -4,7 +4,7 @@
 **DO NOT READ OR UPDATE THIS FILE!!!**
 
 ## Plan Prompt
-`./Requirements.md` has been updated.  Read it and the code to verify that `./Plan.md` is up to date with the new requirements.  Update `./Plan.md` with the new requirements and then create `./Update.md` with information about the currently required code updates.
+`./Requirements.md` has been updated.  Read it and the code to verify that `./Plan.md` is up to date with the new requirements.  Update `./Plan.md` with the new requirements and then create `./Update.md` with information about the code updates are still required.
 
 ## Update Prompt
 Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Don't update the Markdown files.
