@@ -142,14 +142,8 @@ class Runner:
             merged_args: Merged arguments (kept for consistency with signature)
         """
         try:
-            # Start process
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1
-            )
+            # Start process (no output capturing - llama-server writes to its own log)
+            process = subprocess.Popen(command)
 
             # Write PID to file
             pid = process.pid
