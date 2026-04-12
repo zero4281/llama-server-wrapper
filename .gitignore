@@ -1,5 +1,6 @@
 llama-cpp
 llama-server.pid
+config.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
