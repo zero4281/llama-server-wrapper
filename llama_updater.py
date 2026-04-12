@@ -507,12 +507,44 @@ class LlamaUpdater:
         print(f"Latest release: {release_tag} ({release['name']})")
         print(f"Published: {release['published_at']}")
 
-        if interactive or not select_release(release, get_available_platforms(release), 
-                                           *detect_platform()):
-            # Interactive mode or no match - fetch more details
-            print("\nFetching release details...")
-            # In a full implementation, show full asset list
-            # For now, proceed with first match
+        # Get available platforms
+        available_platforms = get_available_platforms(release)
+        print(f"\nAvailable platforms in this release:")
+        for i, platform_info in enumerate(available_platforms, 1):
+            variant = f" ({platform_info['variant']})" if platform_info['variant'] else ""
+            print(f"  {i}. {platform_info['platform']} {platform_info['arch']}{variant}")
+
+        # Detect platform
+        detected_platform, detected_arch = detect_platform()
+        
+        # Select platform
+        selected_asset = select_release(release, available_platforms, 
+                                      detected_platform, detected_arch)
+        
+        if selected_asset:
+            print(f"\nSelected: {selected_asset['name']}")
+        else:
+            print("\nNo matching platform found. Please select manually.")
+            # Show all assets for selection
+            print("\nAvailable assets:")
+            for i, asset in enumerate(release.get('assets', [])[:5], 1):  # Show first 5
+                print(f"  {i}. {asset['name']} ({asset['size']//1024//1024}MB)")
+            
+            choice = input("\nSelect asset [1]: ").strip()
+            choice_idx = int(choice) - 1
+            if choice_idx < 0 or choice_idx >= len(release.get('assets', [])):
+                print("Invalid choice. Exiting.")
+                sys.exit(0)
+            selected_asset = release['assets'][choice_idx]
+
+        # Confirmation prompt
+        release_name = f"{selected_asset['name']}"
+        print(f"\nSelected release: {release_tag} ({release_name})")
+        confirm = input("Proceed with installation? [Y/n]: ").strip().lower()
+        
+        if confirm == "n" or confirm == "no":
+            print("Installation cancelled.")
+            sys.exit(0)
 
         install_release(release, release_tag)
 
