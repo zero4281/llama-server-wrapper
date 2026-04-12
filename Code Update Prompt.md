@@ -19,4 +19,4 @@ Run the unit tests in `./Unit Tests`.  Use the results of the unit tests to crea
 Read `./Requirements.md` and `./Plan.md`.  Read `./Bugs.md` and update the code.
 
 ## Commit prompt
-Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Then commit the update.
+Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Make sure the commit message is only once sentence long.  Then commit the update.

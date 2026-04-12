@@ -222,6 +222,10 @@ def stop_server() -> int:
             kernel32.TerminateProcess(ctypes.c_int(pid), 0)
         else:
             os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        # Process already exited
+        print("Process already exited")
+        return 0
 
         # Wait up to 60 seconds
         for i in range(60):
