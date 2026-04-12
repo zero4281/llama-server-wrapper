@@ -50,23 +50,29 @@ class Runner:
         log_path = self._resolve_log_file()
         
         # Build command
-        command = self._build_command(log_path)
+        command = self._build_command(log_path, merged_args)
         
         # Execute based on foreground flag
         if self.args.foreground:
-            self._run_foreground(command)
+            self._run_foreground(command, merged_args)
         else:
-            self._run_background(command)
+            self._run_background(command, merged_args)
 
     def _load_config_options(self) -> list:
         """
         Load options from config.json's llama-server.options section.
 
         Returns:
-            List of command-line arguments in "--key=value" format
+            List of command-line arguments
         """
         options = self.config.get("llama-server", {}).get("options", {})
-        return [f"--{k}={v}" for k, v in options.items()]
+        args = []
+        for key, value in options.items():
+            if value is not None and value != "":
+                args.extend([f"--{key}", f"{value}"])
+            else:
+                args.append(f"--{key}")
+        return args
 
     def _merge_args(self, config_args: list) -> list:
         """
@@ -109,32 +115,31 @@ class Runner:
         # 3. Default
         return DEFAULT_LOG_FILE
 
-    def _build_command(self, log_path: Path) -> list:
+    def _build_command(self, log_path: Path, merged_args: list) -> list:
         """
         Build the command to run llama-server.
 
         Args:
             log_path: Path to the log file
+            merged_args: Merged arguments from config and CLI
 
         Returns:
             List of command arguments
         """
         cmd = [str(self.llama_server_path)]
         
-        # Add log-file argument
-        cmd.extend(["--log-file", str(log_path)])
-        
         # Add merged args
-        cmd.extend(self._merge_args([]))
+        cmd.extend(merged_args)
         
         return cmd
 
-    def _run_background(self, command: list) -> None:
+    def _run_background(self, command: list, merged_args: list) -> None:
         """
         Run llama-server in the background as a daemon.
 
         Args:
             command: Command to execute
+            merged_args: Merged arguments (kept for consistency with signature)
         """
         try:
             # Start process
@@ -160,12 +165,13 @@ class Runner:
             self._cleanup()
             raise e
 
-    def _run_foreground(self, command: list) -> None:
+    def _run_foreground(self, command: list, merged_args: list) -> None:
         """
         Run llama-server in the foreground (blocking).
 
         Args:
             command: Command to execute
+            merged_args: Merged arguments (kept for consistency with signature)
         """
         try:
             # Start process
