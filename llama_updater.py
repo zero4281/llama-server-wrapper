@@ -88,21 +88,21 @@ def detect_platform() -> Tuple[str, str]:
         if "aarch64" in machine or "arm64" in machine:
             return "Linux", "arm64"
         if "x86_64" in machine:
-            return "Linux", "x86_64"
+            return "Linux", "x64"  # Normalize to x64 for matching
         return "Linux", "aarch64"  # fallback
 
     elif system == "Windows":
         if "aarch64" in machine or "arm64" in machine:
             return "Windows", "arm64"
         if "x86_64" in machine:
-            return "Windows", "x86_64"
+            return "Windows", "x64"  # Normalize to x64 for matching
         return "Windows", "amd64"  # fallback
 
     elif system == "Darwin":
         if "aarch64" in machine or "arm64" in machine:
             return "macOS", "arm64"
         if "x86_64" in machine:
-            return "macOS", "x86_64"
+            return "macOS", "x64"  # Normalize to x64 for matching
         return "macOS", "amd64"  # fallback
 
     else:
@@ -206,28 +206,70 @@ def parse_asset_name(name: str) -> Dict[str, str]:
     Parse asset name to extract platform and architecture info.
 
     Args:
-        name: Asset name (e.g., "llama-server-linux-arm64.tar.gz")
+        name: Asset name (e.g., "llama-server-linux-arm64.tar.gz" or
+                "llama-b8763-bin-ubuntu-x64.tar.gz")
 
     Returns:
         Dictionary with parsed info
     """
-    # Remove extension
-    base_name = Path(name).stem
+    # Remove extension (handles .tar.gz, .tgz, .zip, etc.)
+    # Remove the extension(s) completely
+    if name.endswith(".tar.gz") or name.endswith(".tgz"):
+        base_name = name.replace(".tar.gz", "").replace(".tgz", "")
+    else:
+        base_name = Path(name).stem  # Standard extension removal
     
-    # Common patterns
-    patterns = [
-        r"^(\w+)-(\w+)(?:-(\w+))?",  # linux-arm64, windows-x86_64, etc.
-        r"^(\w+)-(\w+)(?:-(\w+))?",  # linux-vulkan, linux-cuda, etc.
-    ]
-
-    for pattern in patterns:
-        match = re.match(pattern, base_name)
-        if match:
-            return {
-                "platform": match.group(1),
-                "arch": match.group(2),
-                "variant": match.group(3) if match.group(3) else None
-            }
+    # Old format: platform-arch[-variant] (e.g., llama-server-linux-arm64)
+    # New format: llama-{tag}-bin-{platform}-{arch} (e.g., llama-b8763-bin-ubuntu-x64)
+    
+    # Try new format first: llama-{tag}-bin-{platform}-{arch}
+    # Tag can contain hyphens, so we need a more flexible pattern
+    new_pattern = r"^llama-[^-]+-bin-(\w+)-(\w+)$"
+    match = re.match(new_pattern, base_name)
+    if match:
+        platform = match.group(1).lower()
+        arch = match.group(2).lower()
+        # Convert platform names to standard names
+        platform_map = {
+            "ubuntu": "Linux",
+            "openEuler": "Linux",
+            "debian": "Linux",
+            "centos": "Linux",
+            "rocky": "Linux",
+            "alpine": "Linux",
+            "archlinux": "Linux",
+            "fedora": "Linux",
+            "redhat": "Linux",
+            "rhel": "Linux",
+            "amazon": "Linux",
+            "oracle": "Linux",
+            "suse": "Linux",
+            "opensuse": "Linux",
+            "gentoo": "Linux",
+            "manjaro": "Linux",
+            "elementary": "Linux",
+            "pop": "Linux",
+            "zorin": "Linux",
+            "linuxmint": "Linux",
+            "deepin": "Linux",
+            "kali": "Linux",
+            "parrot": "Linux",
+        }
+        return {
+            "platform": platform_map.get(platform, platform),
+            "arch": arch,
+            "variant": None
+        }
+    
+    # Try old format: platform-arch[-variant]
+    pattern = r"^(\w+)-(\w+)(?:-(\w+))?"
+    match = re.match(pattern, base_name)
+    if match:
+        return {
+            "platform": match.group(1),
+            "arch": match.group(2),
+            "variant": match.group(3) if match.group(3) else None
+        }
     
     return {"platform": None, "arch": None, "variant": None}
 
@@ -276,8 +318,10 @@ def select_release(release: dict, available_platforms: List[dict],
     """
     detected_key = (detected_platform, detected_arch)
     
-    if detected_key in available_platforms:
-        return available_platforms[available_platforms.index(detected_key)]["assets"][0]
+    # Find matching platform in available_platforms
+    for platform_info in available_platforms:
+        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
+            return platform_info['assets'][0]
     
     # If no exact match, show options and let user choose
     return None
@@ -339,9 +383,17 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> None:
                 with tarfile.open(archive_path, 'r:gz') as tar_ref:
                     tar_ref.extractall(tmpdir)
             else:
-                # Try default extraction
-                with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                    zip_ref.extractall(tmpdir)
+                # Try to detect file type
+                if archive_path.suffix == '.tar':
+                    with tarfile.open(archive_path, 'r') as tar_ref:
+                        tar_ref.extractall(tmpdir)
+                elif archive_path.suffix == '.gz':
+                    with tarfile.open(archive_path, 'r:gz') as tar_ref:
+                        tar_ref.extractall(tmpdir)
+                else:
+                    # Try default zip extraction
+                    with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                        zip_ref.extractall(tmpdir)
 
             # Move contents to dest_dir
             extracted_root = Path(tmpdir)

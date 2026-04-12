@@ -22,4 +22,4 @@ fi
 source "${SCRIPT_DIR}/.venv/bin/activate"
 
 # Forward all arguments to main.py
-python3 "${SCRIPT_DIR}/main_wrapper.py" "$@"
+python3 "${SCRIPT_DIR}/main.py" "$@"

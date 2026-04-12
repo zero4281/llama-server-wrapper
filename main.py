@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path.cwd()))
 
 from wrapper_config import load_config, get_logger
 from llama_updater import LlamaUpdater
-from runner import stop_server
+from runner import stop_server, Runner
 
 
 class Main:
@@ -195,6 +195,13 @@ class Main:
         
         # Default: Run llama-server
         print("\n[Run llama-server]\n")
+        
+        # Check if llama-cpp is installed
+        llama_cpp_path = Path.cwd() / "llama-cpp" / "llama-server"
+        if not llama_cpp_path.exists():
+            print("Error: llama-cpp is not installed. Please run with --install-llama first.")
+            print("\nUsage: ./llama-server-wrapper --install-llama")
+            sys.exit(1)
         
         runner = Runner(self.args, self.config)
         runner.run()

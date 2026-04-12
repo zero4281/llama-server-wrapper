@@ -143,8 +143,7 @@ class Runner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,
-                startnewsession=True if sys.platform != 'win32' else False
+                bufsize=1
             )
 
             # Write PID to file
