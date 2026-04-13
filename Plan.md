@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Development Plan
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** April 2026  
 **Author:** zero4281
 
@@ -8,16 +8,22 @@
 
 ## 1. Current State Assessment
 
-### ✅ Requirements Compliance
+### ⚠️ Requirements Compliance
 
-The codebase **fully implements** all functional requirements specified in Requirements.md v1.0. Verified against all sections:
+The codebase **implements core functionality** but **missing v1.1 user confirmation requirements**:
+
+**Implemented (v1.0):**
 - **Section 2 (Project Structure)**: All files present and correctly organized
 - **Section 3 (Configuration)**: Auto-generation working, options/logging sections implemented
 - **Section 4 (Start Script)**: Bash script functional with venv check
-- **Section 5 (Main Entry)**: All CLI flags implemented, self-update functional
-- **Section 6 (llama_updater)**: GitHub API, platform detection, download/extraction complete
+- **Section 5 (Main Entry)**: All CLI flags implemented, self-update functional (basic)
+- **Section 6 (llama_updater)**: GitHub API, platform detection, download/extraction functional
 - **Section 7 (Run Script)**: Process execution, PID management, graceful shutdown complete
 - **Section 8 (Non-Functional)**: Cross-platform, error handling, PEP 8 compliance verified
+
+**Not Implemented (v1.1):**
+- **Section 5.3 (Self-update)**: Missing interactive source selection menu (Options 1-3) and confirmation prompt
+- **Section 6.3 (llama_updater)**: Missing user confirmation prompt for install/update
 
 ### ✅ Implementation Verification
 
@@ -44,8 +50,20 @@ The codebase **fully implements** all functional requirements specified in Requi
 ### ⚠️ Implementation Notes
 
 1. **File naming**: Main entry point is `main.py` (not `main_wrapper.py` as mentioned in v1.1)
-2. **Self-update implementation**: Uses GitHub API to fetch latest release zipball and extracts to replace local files
+2. **Self-update implementation**: Uses GitHub API to fetch latest release zipball and extracts to replace local files (missing v1.1 interactive menu and confirmation)
 3. **Config auto-generation**: Creates default `config.json` with required structure if missing
+
+### 🚧 Missing v1.1 Requirements
+
+**Self-update (`--self-update`) - Section 5.3:**
+- **Missing**: Interactive source selection menu (Options 1-3: Latest release, Previous release, Repository HEAD)
+- **Missing**: Confirmation prompt after source selection ("Selected: ... Proceed with update? [Y/n]:")
+- **Missing**: Default option (1) selection when user presses Enter
+
+**llama.cpp Install/Update - Section 6.3:**
+- **Missing**: Confirmation prompt before installation ("Selected release: ... Proceed with installation? [Y/n]:")
+- **Missing**: Default option (Enter = proceed) handling
+- **Missing**: Explicit opt-out (n = cancel) handling
 
 ---
 
@@ -155,6 +173,7 @@ The codebase implements appropriate exit codes:
 
 ### What Needs Updates
 1. **Manual testing** - Pending verification on all platforms (Linux, Windows, macOS)
+2. **v1.1 Requirements Implementation** - Pending user confirmation flows for self-update and llama.cpp install/update
 
 ---
 
@@ -186,4 +205,5 @@ The codebase implements appropriate exit codes:
 | 1.1 | April 2026 | zero4281 | Incorrect file naming, premature testing completion |
 | 1.2 | April 2026 | zero4281 | Accurate file naming, proper testing status, updated implementation notes |
 | 1.3 | April 2026 | zero4281 | Verified against Requirements.md v1.0; complete implementation documentation |
+| 1.4 | April 2026 | zero4281 | Updated to reflect Requirements.md v1.1; missing v1.1 user confirmation features identified |
 

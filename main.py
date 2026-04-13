@@ -85,40 +85,105 @@ class Main:
         print("Performing self-update...")
         
         try:
-            # Fetch latest code from GitHub
             import requests
             import zipfile
             import tempfile
             
-            # Get latest release
-            url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases/latest"
-            headers = {
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            }
+            # Source selection menu
+            print("\nSelect update source:")
+            print("  1) Latest release (recommended)")
+            print("  2) Previous release")
+            print("  3) Repository HEAD (main branch)")
             
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            choice = input("Choice [1]: ").strip()
             
-            release = response.json()
-            zip_url = release["zipball_url"]
+            if choice == "":
+                choice = "1"
+            elif choice == "2":
+                # Fetch previous releases
+                url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                response = requests.get(url, headers=headers, timeout=30)
+                response.raise_for_status()
+                releases = response.json()
+                
+                print("\nPrevious releases:")
+                for i, rel in enumerate(releases, 1):
+                    tag = rel["tag_name"]
+                    name = rel["name"]
+                    published = rel["published_at"]
+                    print(f"  {i}. {tag} - {name} ({published})")
+                
+                choice = input("Select release [1]: ").strip()
+                if choice == "":
+                    choice = "1"
+                choice_idx = int(choice) - 1
+                if choice_idx < 0 or choice_idx >= len(releases):
+                    print("Invalid choice. Exiting.")
+                    sys.exit(0)
+                selected_release = releases[choice_idx]
+                selected_tag = selected_release["tag_name"]
+                zip_url = selected_release.get("zipball_url") or selected_release.get("zipball_url", "")
+            elif choice == "3":
+                # Download main branch HEAD
+                download_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                zip_response = requests.get(download_url, headers=headers, timeout=60)
+                zip_response.raise_for_status()
+                print("\nSelected: main branch HEAD")
+                zip_content = zip_response.content
+            else:
+                print("Invalid choice. Exiting.")
+                sys.exit(0)
             
-            # Download zip
-            download_url = zip_url.replace(
-                "/zipball", "/archive/"
-            )
+            # Confirmation prompt
+            if choice == "1":
+                # Get latest release info
+                url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases/latest"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                response = requests.get(url, headers=headers, timeout=30)
+                response.raise_for_status()
+                release = response.json()
+                tag = release["tag_name"]
+                name = release["name"]
+            elif choice == "2":
+                tag = selected_tag
+                name = selected_release["name"]
+            else:
+                tag = "HEAD"
+                name = "main branch HEAD"
             
-            zip_response = requests.get(
-                download_url, headers=headers, timeout=60
-            )
-            zip_response.raise_for_status()
+            print(f"\nSelected: {tag} ({name})")
+            confirm = input("Proceed with update? [Y/n]: ").strip().lower()
             
-            # Extract to temp directory
+            if confirm == "n" or confirm == "no":
+                print("Update cancelled.")
+                sys.exit(0)
+            
+            # Download and extract
             with tempfile.TemporaryDirectory() as tmpdir:
                 extract_path = Path(tmpdir) / "llama-server-wrapper"
-                with zipfile.ZipFile(
-                    Path(zip_response.content), 'r'  
-                ) as zip_ref:
+                extract_path.mkdir()
+                
+                if choice == "3":
+                    zip_ref = zipfile.ZipFile(Path(zip_content), 'r')
+                    zip_ref.extractall(extract_path)
+                else:
+                    # Get zipball URL
+                    zip_url = release.get("zipball_url", selected_release.get("zipball_url", ""))
+                    download_url = zip_url.replace("/zipball", "/archive/")
+                    zip_response = requests.get(download_url, headers=headers, timeout=60)
+                    zip_response.raise_for_status()
+                    zip_ref = zipfile.ZipFile(Path(zip_response.content), 'r')
                     zip_ref.extractall(extract_path)
                 
                 # Copy updated files
@@ -133,7 +198,7 @@ class Main:
                             target.write_bytes(file_path.read_bytes())
                             print(f"Updated: {rel_path}")
                 
-                print("Self-update complete!")
+                print("\nSelf-update complete!")
             
             # Restart with same arguments
             print(f"Restarting with original arguments: {args}")
@@ -149,9 +214,36 @@ class Main:
                 if module in sys.modules:
                     del sys.modules[module]
             
-            # Execute restart
-            exec(sys.stdin.read() if hasattr(sys.stdin, 'read') 
-                 else "import main; main.main()" , {'__name__': '__main__'})
+            # Restart with same arguments
+            print(f"Restarting with original arguments: {args}")
+            
+            # Re-parse args to preserve llama_args
+            new_args = [sys.argv[0]] + list(args)
+            
+            # Clear any cached modules to force reimport
+            modules_to_clear = [
+                'main', 'runner', 'llama_updater', 'logging'
+            ]
+            for module in modules_to_clear:
+                if module in sys.modules:
+                    del sys.modules[module]
+            
+            # Execute restart using os.execv to replace current process
+            import subprocess
+            import shlex
+            
+            # Build command to execute
+            cmd = [sys.executable] + new_args
+            
+            # Execute and replace current process
+            subprocess.run([sys.executable] + new_args, 
+                         stdout=subprocess.PIPE, 
+                         stderr=subprocess.PIPE, 
+                         text=True)
+            
+            # If we get here, something went wrong, exit with error
+            print("Restart failed, exiting.")
+            sys.exit(2)
             
         except Exception as e:
             print(f"Self-update failed: {e}")
@@ -207,21 +299,23 @@ class Main:
         runner.run()
 
 
-def main() -> None:
-    """CLI entry point."""
-    try:
-        app = Main()
-        app.run()
-    except KeyboardInterrupt:
-        print("\n\nReceived interrupt (Ctrl+C), exiting...")
-        sys.exit(130)
-    except Exception as e:
-        if app.logger:
-            app.logger.error(f"Unhandled error: {e}")
-        else:
-            print(f"Error: {e}")
-        sys.exit(1)
+    @staticmethod
+    def main() -> None:
+        """CLI entry point."""
+        try:
+            app = Main()
+            app.run()
+        except KeyboardInterrupt:
+            print("\n\nReceived interrupt (Ctrl+C), exiting...")
+            sys.exit(130)
+        except Exception as e:
+            # Safely check for logger using getattr to avoid AttributeError
+            if hasattr(app, 'logger') and app.logger:
+                getattr(app.logger, 'error', print)(f"Unhandled error: {e}")
+            else:
+                print(f"Error: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    Main.main()

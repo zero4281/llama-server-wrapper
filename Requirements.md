@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Software Requirements Document
 
-**Version:** 1.0  
+**Version:** 1.2  
 **Date:** April 2026  
 **Repository:** https://github.com/zero4281/llama-server-wrapper
 
@@ -136,7 +136,7 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 
 | Argument | Type | Description |
 |---|---|---|
-| `--self-update` | Flag | Pull the latest code from the `main` branch of the project GitHub repository and restart. |
+| `--self-update` | Flag | Update the wrapper's own scripts from the project GitHub repository. Prompts the user to choose between the latest release, a previous release, or the repository `main` branch HEAD before proceeding. |
 | `--install-llama` | Flag | Download and install the newest release of llama.cpp. Delegates to `LlamaUpdater` in `llama_updater.py`. |
 | `--update-llama` | Flag | Update an existing llama.cpp installation to the latest release. Delegates to `LlamaUpdater`. |
 | `--stop-server` | Flag | Signal `runner.py` to gracefully stop a running `llama-server` process. |
@@ -146,10 +146,49 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 
 ### 5.3 Self-update behaviour (`--self-update`)
 
-- Fetch the latest code from the `main` branch of `https://github.com/zero4281/llama-server-wrapper`.
-- Replace local files with the updated versions.
+#### 5.3.1 Source selection
+
+Before downloading anything, present the user with a numbered menu to choose the update source:
+
+```
+Select update source:
+  1) Latest release (recommended)
+  2) Previous release
+  3) Repository HEAD (main branch)
+Choice [1]:
+```
+
+- Pressing Enter without input selects the default (option 1, latest release).
+- Selecting **option 2** fetches the list of available releases from the GitHub Releases API (same endpoints as Section 6.2, with `owner = zero4281`, `repo = llama-server-wrapper`) and presents a numbered list for the user to choose from.
+- Selecting **option 3** downloads the current `main` branch HEAD as a ZIP archive from:
+  ```
+  https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip
+  ```
+
+#### 5.3.2 Confirmation prompt
+
+After the user selects a source, display the resolved version or commit reference and prompt for confirmation before modifying any local files:
+
+```
+Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip)
+Proceed with update? [Y/n]:
+```
+
+For a HEAD update the label should reflect the branch rather than a release tag, e.g.:
+
+```
+Selected: main branch HEAD
+Proceed with update? [Y/n]:
+```
+
+Pressing Enter confirms (default yes). Entering `n` cancels and exits with status code `0` without modifying any files.
+
+#### 5.3.3 Update execution
+
+- Download the selected archive or branch ZIP to a temporary location.
+- Replace local project files with the downloaded versions.
 - After a successful update, restart `main.py` with the same arguments that were originally passed.
-- If the update fails, print an error message and exit with a non-zero status code without modifying local files.
+- If the download or file replacement fails, print an error message and exit with a non-zero status code. Local files must not be left in a partially modified state; restore originals if replacement has already begun.
 
 ### 5.4 Startup sequence
 
@@ -206,26 +245,73 @@ The `assets` array in each release response contains the downloadable files. Eac
 
 > **Note:** The GitHub API applies rate limits to unauthenticated requests (60 requests/hour). The module must handle `403` / `429` rate-limit responses gracefully, inform the user, and include the `X-RateLimit-Reset` time from the response headers where available.
 
-### 6.3 Release discovery
+### 6.3 Release selection
 
-- Query the GitHub Releases API using the endpoints described in Section 6.2.
-- By default, present the latest release for download.
-- Provide an interactive option to select an older release from the paginated list of available releases.
+#### 6.3.1 Tag selection prompt
 
-### 6.4 Platform & architecture selection
+Present a numbered menu of release tags fetched from the GitHub Releases API. Option `0` allows the user to type a tag manually; options `1`–`5` are the five most recent release tags. Pressing Enter without a selection installs the most recent release (option `1`). Example:
+
+```
+Select a llama.cpp release to install:
+  0) Enter a tag manually
+  1) b8800 (latest)
+  2) b8790
+  3) b8780
+  4) b8770
+  5) b8760
+Choice [1]:
+```
+
+If the user selects option `0`, prompt for the tag string:
+
+```
+Enter release tag: 
+```
+
+#### 6.3.2 Asset (zip file) selection prompt
+
+After a release tag is resolved, fetch its asset list from the GitHub API and present all available zip files as a numbered list. Auto-detect the current platform and architecture using Python's `platform` module and highlight the recommended asset. The recommended option is also the default if the user presses Enter without a selection. Example:
+
+```
+Select a zip file to install:
+  1) llama-b8800-bin-ubuntu-x64.zip  ← recommended
+  2) llama-b8800-bin-win-avx2-x64.zip
+  3) llama-b8800-bin-macos-arm64.zip
+  4) llama-b8800-bin-macos-x64.zip
+  ...
+Choice [1]:
+```
+
+If auto-detection fails (platform or architecture cannot be determined), no option is highlighted and no default is pre-selected; the user must choose explicitly.
+
+#### 6.3.3 Confirmation prompt
+
+After the user selects a release tag and asset, display both and prompt for confirmation before downloading anything:
+
+```
+Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip)
+Proceed with installation? [Y/n]:
+```
+
+Pressing Enter confirms (default yes). Entering `n` cancels and exits with status code `0` without modifying any files.
+
+### 6.4 Platform & architecture detection
 
 - Auto-detect the current platform (Linux, Windows, macOS) and architecture (`x86_64`, `arm64`, etc.) using Python's `platform` module.
-- Present the detected platform/architecture as the default choice.
-- Allow the user to override and select from all available platform/architecture combinations present in the chosen release (e.g. Linux + Vulkan, Windows + CPU, macOS + arm64).
-- Derive available options from the `name` field of each asset in the release's `assets` array.
+- Use the detected platform/architecture to determine and highlight the recommended asset in the selection list (see Section 6.3.2).
+- If detection fails, display all assets without a highlighted recommendation and require the user to select explicitly.
 
 ### 6.5 Download & extraction
 
 - Download the selected release archive (`.zip` or `.tar.gz`) using the asset's `browser_download_url`.
-- Decompress and extract the full archive contents — all binaries and supporting files — into the `./llama-cpp/` folder in the project directory.
-- Overwrite any existing contents of `./llama-cpp/` without prompting.
+- Display a progress bar or spinner during the download so the user can track progress.
+- **Checksum verification:** After the download completes, check whether the release provides a checksum file (e.g. `sha256sum.txt` or a similarly named asset). If one is present, download it and verify the archive before proceeding. If verification fails, delete the downloaded archive, print a clear error message, and exit with a non-zero status code.
+- If no checksum asset is available for the release, skip verification and proceed directly to extraction.
+- Decompress and extract the full archive contents — all binaries and supporting files — into the `./llama-cpp/` folder in the **same directory as the script**.
+- If a `./llama-cpp/` folder already exists, delete it entirely before extraction without prompting or creating a backup.
 - Ensure `llama-server` (or `llama-server.exe` on Windows) is executable after extraction.
 - Remove the downloaded archive file after successful extraction.
+- After a successful install, print a success message and run a quick sanity check by executing `llama-server --version` and displaying its output. If the sanity check fails, print a warning but still exit with status code `0` (the binaries were installed; the version check is informational).
 
 ### 6.6 Error handling
 
@@ -327,4 +413,6 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.2 | April 2026 | zero4281 | Expanded Section 6 install workflow: interactive release tag + asset selection with auto-detected recommendation, all-assets display, checksum verification, download progress bar, delete-and-replace of existing llama-cpp folder, post-install success message and sanity check |
+| 1.1 | April 2026 | zero4281 | Added user confirmation and source selection for `--self-update`; added user confirmation prompt to llama.cpp install/update |
 | 1.0 | April 2026 | zero4281 | Initial draft |

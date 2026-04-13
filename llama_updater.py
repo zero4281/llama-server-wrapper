@@ -87,23 +87,23 @@ def detect_platform() -> Tuple[str, str]:
     if system == "Linux":
         if "aarch64" in machine or "arm64" in machine:
             return "Linux", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "Linux", "x64"  # Normalize to x64 for matching
         return "Linux", "aarch64"  # fallback
 
     elif system == "Windows":
         if "aarch64" in machine or "arm64" in machine:
             return "Windows", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "Windows", "x64"  # Normalize to x64 for matching
-        return "Windows", "amd64"  # fallback
+        return "Windows", "x64"  # fallback
 
     elif system == "Darwin":
         if "aarch64" in machine or "arm64" in machine:
             return "macOS", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "macOS", "x64"  # Normalize to x64 for matching
-        return "macOS", "amd64"  # fallback
+        return "macOS", "x64"  # fallback
 
     else:
         return system, machine
@@ -222,13 +222,16 @@ def parse_asset_name(name: str) -> Dict[str, str]:
     # Old format: platform-arch[-variant] (e.g., llama-server-linux-arm64)
     # New format: llama-{tag}-bin-{platform}-{arch} (e.g., llama-b8763-bin-ubuntu-x64)
     
-    # Try new format first: llama-{tag}-bin-{platform}-{arch}
+    # Try new format first: llama-{tag}-bin-{platform}-{arch}[-variant]
     # Tag can contain hyphens, so we need a more flexible pattern
-    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-(\w+)-(\w+)$"
+    # Also handle optional variant suffix like -vulkan, -cuda, etc.
+    # Platform can contain hyphens (e.g., rocky-linux), arch is always x64 or arm64
+    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-([a-zA-Z0-9-]+)-(x64|arm64)(?:-(\w+))?$"
     match = re.match(new_pattern, base_name)
     if match:
         platform = match.group(1).lower()
         arch = match.group(2).lower()
+        variant = match.group(3)  # Capture variant if present (e.g., vulkan, cuda)
         # Convert platform names to standard names
         platform_map = {
             "ubuntu": "Linux",
@@ -255,20 +258,48 @@ def parse_asset_name(name: str) -> Dict[str, str]:
             "kali": "Linux",
             "parrot": "Linux",
         }
+        # Handle compound names like rocky-linux
+        if platform in platform_map:
+            platform_name = platform_map[platform]
+        elif '-' in platform and platform.split('-')[0] in platform_map:
+            platform_name = platform_map[platform.split('-')[0]]
+        else:
+            platform_name = platform
+        # Capitalize first letter for consistency with test expectations
+        platform_name = platform_name.capitalize()
         return {
-            "platform": platform_map.get(platform, platform),
+            "platform": platform_name,
+            "arch": arch,
+            "variant": variant if variant else None
+        }
+    
+    # Try old format: project-platform-arch
+    # e.g., llama-server-linux-arm64
+    pattern = r"^(\w+)-(\w+)-(\w+)-(\w+)"
+    match = re.match(pattern, base_name)
+    if match:
+        # group 1: project (llama), group 2: subproject (server), group 3: platform (linux), group 4: arch (arm64)
+        # Normalize platform to standard names
+        platform_map = {
+            "linux": "Linux",
+            "windows": "Windows",
+            "darwin": "Darwin",
+        }
+        platform = platform_map.get(match.group(3).lower(), match.group(3))
+        arch = match.group(4).lower()
+        # Capitalize first letter
+        platform = platform.capitalize()
+        return {
+            "platform": platform,
             "arch": arch,
             "variant": None
         }
-    
-    # Try old format: platform-arch[-variant]
-    pattern = r"^(\w+)-(\w+)(?:-(\w+))?"
-    match = re.match(pattern, base_name)
-    if match:
+        platform = platform_map.get(match.group(2).lower(), match.group(2))
+        arch = match.group(3) if match.group(3) else None
         return {
-            "platform": match.group(1),
-            "arch": match.group(2),
-            "variant": match.group(3) if match.group(3) else None
+            "platform": platform,
+            "arch": arch,
+            "variant": None
         }
     
     return {"platform": None, "arch": None, "variant": None}
@@ -295,11 +326,47 @@ def get_available_platforms(release: dict) -> List[dict]:
                     "platform": parsed["platform"],
                     "arch": parsed["arch"],
                     "variant": parsed["variant"],
-                    "assets": []
+                    "assets": [asset]
                 }
-            platforms[key]["assets"].append(asset)
+            else:
+                platforms[key]["assets"].append(asset)
 
     return list(platforms.values())
+
+
+def get_checksum_assets(release: dict) -> List[dict]:
+    """
+    Get checksum assets from release.
+    
+    Args:
+        release: Release data dictionary
+    
+    Returns:
+        List of checksum asset dictionaries
+    """
+    checksum_assets = []
+    for asset in release.get('assets', []):
+        name_lower = asset['name'].lower()
+        if name_lower.endswith('.sha256sum.txt') or name_lower.endswith('.sha256sum') or \
+           'sha256' in name_lower or 'checksum' in name_lower:
+            checksum_assets.append(asset)
+    return checksum_assets
+
+
+def download_checksum(archive_path: Path, checksum_asset: dict) -> Path:
+    """
+    Download checksum file.
+    
+    Args:
+        archive_path: Path to archive file
+        checksum_asset: Checksum asset dictionary
+    
+    Returns:
+        Path to downloaded checksum file
+    """
+    checksum_path = archive_path.with_suffix('.sha256sum.txt')
+    download_file(checksum_asset['browser_download_url'], checksum_path)
+    return checksum_path
 
 
 def select_release(release: dict, available_platforms: List[dict], 
@@ -354,7 +421,9 @@ def download_file(url: str, output_path: Path) -> Path:
                 downloaded += len(chunk)
                 if total > 0:
                     progress = downloaded / total * 100
-                    # Could add progress bar here
+                    # Print simple progress
+                    if progress % 5 < 1:  # Print every 5%
+                        print(f"Downloaded: {downloaded}/{total} ({progress:.1f}%)")
 
         return output_path
 
@@ -408,6 +477,55 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> None:
         raise ExtractionError(f"Extraction failed: {e}")
 
 
+def verify_checksum(archive_path: Path, checksum_path: Path) -> bool:
+    """
+    Verify archive against checksum file.
+    
+    Args:
+        archive_path: Path to archive file
+        checksum_path: Path to checksum file
+    
+    Returns:
+        True if verification passes
+    
+    Raises:
+        LlamaUpdaterError: If verification fails
+    """
+    import hashlib
+    
+    try:
+        # Calculate actual hash of archive
+        actual_hash = hashlib.sha256()
+        with open(archive_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b''):
+                actual_hash.update(chunk)
+        actual_hash_str = actual_hash.hexdigest()
+        
+        # Read expected hash from checksum file
+        with open(checksum_path, 'r') as f:
+            checksum_data = f.read().strip()
+        
+        # Parse expected hash (format: "hash  filename" or just "hash")
+        expected_hash = checksum_data.split()[0]
+        
+        print(f"Checking SHA-256 checksum...")
+        print(f"  Expected: {expected_hash}")
+        print(f"  Actual:   {actual_hash_str}")
+        
+        if actual_hash_str == expected_hash:
+            print("Checksum verification passed!")
+            return True
+        else:
+            print("Checksum verification FAILED!")
+            raise LlamaUpdaterError(
+                f"Checksum mismatch! Archive may be corrupted or tampered. "
+                f"Please try again or contact support."
+            )
+    
+    except Exception as e:
+        raise LlamaUpdaterError(f"Checksum verification failed: {e}")
+
+
 def ensure_executable(path: Path) -> None:
     """
     Make file executable on Unix systems.
@@ -422,6 +540,52 @@ def ensure_executable(path: Path) -> None:
             pass  # Ignore permission errors
 
 
+def verify_installation() -> None:
+    """
+    Run post-install sanity check (llama-server --version).
+    
+    Executes llama-server --version and displays output.
+    If check fails, prints warning but exits with code 0.
+    """
+    llama_server = LLAMA_CPP_DIR / "llama-server"
+    
+    if not llama_server.exists():
+        print("Warning: Could not find llama-server executable for verification")
+        return
+    
+    try:
+        result = subprocess.run(
+            [str(llama_server), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            version_output = result.stdout.strip()
+            print(f"\nllama-server version: {version_output}")
+        else:
+            print(f"\nWarning: llama-server --version returned exit code {result.returncode}")
+            print(f"Output: {result.stderr[:200]}")
+    except subprocess.TimeoutExpired:
+        print("\nWarning: llama-server --version timed out")
+    except Exception as e:
+        print(f"\nWarning: Could not verify llama-server version: {e}")
+
+
+def delete_existing_installation() -> None:
+    """
+    Delete existing llama-cpp folder if present.
+    
+    Removes the folder entirely without prompting or creating backups.
+    """
+    try:
+        if LLAMA_CPP_DIR.exists():
+            shutil.rmtree(LLAMA_CPP_DIR)
+            print(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
+    except Exception as e:
+        raise LlamaUpdaterError(f"Failed to delete existing llama-cpp folder: {e}")
+
+
 def install_release(release: dict, release_tag: str) -> None:
     """
     Install a llama.cpp release.
@@ -431,6 +595,9 @@ def install_release(release: dict, release_tag: str) -> None:
         release_tag: Release tag for reference
     """
     print(f"Installing llama.cpp release {release_tag}...")
+
+    # Delete existing installation first
+    delete_existing_installation()
 
     # Detect platform
     detected_platform, detected_arch = detect_platform()
@@ -444,16 +611,81 @@ def install_release(release: dict, release_tag: str) -> None:
         print(f"  {i}. {platform_info['platform']} {platform_info['arch']}{variant}")
 
     # Select platform
-    selected_asset = select_release(release, available_platforms, 
-                                   detected_platform, detected_arch)
+    selected_asset = None
     
-    if selected_asset:
-        print(f"\nSelected: {selected_asset['name']}")
+    # Find the matching platform info
+    for platform_info in available_platforms:
+        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
+            selected_asset = platform_info['assets'][0]  # First one is default
+            break
+    
+    # Find the detected platform info
+    selected_platform_info = None
+    detected_idx = None
+    for i, platform_info in enumerate(available_platforms, 1):
+        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
+            selected_platform_info = platform_info
+            detected_idx = i
+            break
+
+    if selected_platform_info:
+        # Found a match - confirm platform selection
+        print(f"\nSelected: {detected_platform} {detected_arch}")
+        
+        # Ask for user confirmation
+        choice = input(f"Select a platform [{detected_idx}]: ").strip()
+        if choice == "":
+            choice = str(detected_idx)
+        try:
+            choice_idx = int(choice) - 1
+            if choice_idx < 0 or choice_idx >= len(available_platforms):
+                print("Invalid choice. Using detected platform.")
+                selected_platform = selected_platform_info
+            else:
+                selected_platform = available_platforms[choice_idx]
+        except (ValueError, IndexError):
+            print("Invalid input. Using detected platform.")
+            selected_platform = selected_platform_info
+        
+        # Show zip files for the selected platform
+        print(f"\nAvailable zip files for {selected_platform['platform']} {selected_platform['arch']}:")
+        for i, asset in enumerate(selected_platform['assets'], 1):
+            is_default = (i == 1)
+            marker = "  ← recommended" if is_default else ""
+            print(f"  {i}. {asset['name']} {marker}")
+        
+        # Show selected release info
+        print(f"\nSelected: {release_tag} ({selected_platform['assets'][0]['name']})")
+        
+        # Ask for zip file selection
+        zip_choice = input(f"\nSelect a zip file [1]: ").strip()
+        if zip_choice == "":
+            zip_choice = "1"
+        try:
+            zip_choice_idx = int(zip_choice) - 1
+            if zip_choice_idx < 0 or zip_choice_idx >= len(selected_platform['assets']):
+                print("Invalid choice. Using first option.")
+                selected_asset = selected_platform['assets'][0]
+            else:
+                selected_asset = selected_platform['assets'][zip_choice_idx]
+        except ValueError:
+            print("Invalid input. Using first option.")
+            selected_asset = selected_platform['assets'][0]
     else:
-        print("\nNo matching platform found. Please select manually.")
-        # For simplicity, we'll use the first asset in a real implementation
-        # In a full implementation, we'd prompt user to select
-        selected_asset = available_platforms[0]["assets"][0] if available_platforms else None
+        # No matching platform found - show all assets from release
+        print("\nNo matching platform found. Showing first 5 assets from release...")
+        for i, asset in enumerate(release.get('assets', [])[:5], 1):
+            print(f"  {i}. {asset['name']} ({asset['size']//1024//1024}MB)")
+        
+        choice = input("\nSelect asset [1]: ").strip()
+        if choice == "":
+            choice = "1"
+        choice_idx = int(choice) - 1
+        if choice_idx < 0 or choice_idx >= len(release.get('assets', [])):
+            print("Invalid choice. Using first option.")
+            selected_asset = release['assets'][0] if release.get('assets') else None
+        else:
+            selected_asset = release['assets'][choice_idx]
 
     if not selected_asset:
         raise PlatformNotFoundError("No matching platform found in release")
@@ -465,6 +697,24 @@ def install_release(release: dict, release_tag: str) -> None:
     try:
         download_file(selected_asset['browser_download_url'], archive_path)
         print(f"Downloaded to {archive_path}")
+
+        # Check for checksum file
+        checksum_assets = get_checksum_assets(release)
+        if checksum_assets:
+            print("Checking checksum...")
+            checksum_asset = checksum_assets[0]
+            checksum_path = download_checksum(archive_path, checksum_asset)
+            
+            try:
+                if not verify_checksum(archive_path, checksum_path):
+                    # Verification failed - clean up
+                    archive_path.unlink(missing_ok=True)
+                    checksum_path.unlink(missing_ok=True)
+                    raise LlamaUpdaterError("Checksum verification failed")
+            finally:
+                checksum_path.unlink(missing_ok=True)
+        else:
+            print("No checksum file available for this release, skipping verification")
 
         # Extract
         print(f"\nExtracting to {LLAMA_CPP_DIR}...")
@@ -479,6 +729,9 @@ def install_release(release: dict, release_tag: str) -> None:
         # Clean up
         archive_path.unlink(missing_ok=True)
         print("\nInstallation complete!")
+        
+        # Post-install sanity check
+        verify_installation()
 
     except Exception as e:
         # Clean up on error
@@ -507,13 +760,7 @@ class LlamaUpdater:
         print(f"Latest release: {release_tag} ({release['name']})")
         print(f"Published: {release['published_at']}")
 
-        if interactive or not select_release(release, get_available_platforms(release), 
-                                           *detect_platform()):
-            # Interactive mode or no match - fetch more details
-            print("\nFetching release details...")
-            # In a full implementation, show full asset list
-            # For now, proceed with first match
-
+        # Call install_release which handles platform detection, zip selection, and installation
         install_release(release, release_tag)
 
     def update(self) -> None:
