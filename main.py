@@ -124,7 +124,7 @@ class Main:
                     sys.exit(0)
                 selected_release = releases[choice_idx]
                 selected_tag = selected_release["tag_name"]
-                zip_url = selected_release["zipball_url"]
+                zip_url = selected_release.get("zipball_url") or selected_release.get("zipball_url", "")
             elif choice == "3":
                 # Download main branch HEAD
                 download_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
@@ -157,6 +157,7 @@ class Main:
                 tag = selected_tag
                 name = selected_release["name"]
             else:
+                tag = "HEAD"
                 name = "main branch HEAD"
             
             print(f"\nSelected: {tag} ({name})")

@@ -4,19 +4,19 @@
 **DO NOT READ OR UPDATE THIS FILE!!!**
 
 ## Plan Prompt
-`./Requirements.md` has been updated.  Read it and the code to verify that `./Plan.md` is up to date with the new requirements.  Update `./Plan.md` with the new requirements and then create `./Update.md` with information about the code updates are still required.
+`./Requirements.md` has been updated.  `Plan.md` is the implementation plan for this project.  Read it and the code to verify that `./Plan.md` is up to date with the requirements.  Update `./Plan.md` with the new requirements and then create `./Update.md` with information about the code updates that are still required.
 
 ## Update Prompt
-Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Don't update the Markdown files.
+Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Update `./Update.md` once the code has been completed, but don't update the other Markdown files.  Create a git branch for these updates.
 
 ## Create Unit Test Prompt
-Read `./Requirements.md` and `./Plan.md`.  Scan the code base, including `./Unit Tests`, and then update or create unit tests with [unittest](https://docs.python.org/3/library/unittest.html) and save them to `./Unit Tests`.  The unit tests are saved to `./Unit Tests`, don't create unit tests for these files.  Only create unit tests for main.py and top level class functions related to command line arguments and `config.json`.
+Read `./Requirements.md` and `./Plan.md`.  Scan the code base, including `./Unit Tests`. There should be one unit test file for every code file and/or class.  Update existing unit tests or create new unit tests if a file doesn't exists. Unit tests should be created with [unittest](https://docs.python.org/3/library/unittest.html) and save them to `./Unit Tests`.  Don't create unit tests for files in `./Unit Tests`.  Only create unit tests for main.py and top level class functions related to command line arguments and `config.json`.  Don't just add unit tests; remove old, unvaluable, and redundant unit tests as well.
 
 ## Run Unit Test Prompt
-Run the unit tests in `./Unit Tests`.  Use the results of the unit tests to create `./Bugs.md`.
+Run the unit tests in `./Unit Tests`.  Use the results of the unit tests to update `./Bugs.md`.
 
 ## Bug Fix Prompt
-Read `./Requirements.md` and `./Plan.md`.  Read `./Bugs.md` and update the code.
+Read `./Requirements.md` and `./Plan.md`.  Read `./Bugs.md` and update the code.  Once the code is updated and the unit tests pass, remove the bug from `./Bugs.md`.
 
 ## Commit prompt
-Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Make sure the commit message is only once sentence long.  Then commit the update.
+Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Make sure the commit message is only once sentence long.  Then commit the update and push the commit.

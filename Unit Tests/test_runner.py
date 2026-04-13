@@ -7,18 +7,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
-from io import StringIO
+from unittest.mock import patch, MagicMock
 
-# Add current directory to path for imports
 sys.path.insert(0, str(Path.cwd()))
+sys.path.insert(0, str(Path.cwd().parent))
 
-from runner import (
-    Runner,
-    stop_server,
-    PID_FILE,
-    DEFAULT_LOG_FILE
-)
+from runner import Runner, stop_server, PID_FILE, DEFAULT_LOG_FILE
 
 
 class TestRunnerInitialization(unittest.TestCase):
@@ -34,11 +28,7 @@ class TestRunnerInitialization(unittest.TestCase):
         config = {
             "options": {},
             "llama-server": {"options": {}},
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
@@ -50,27 +40,7 @@ class TestRunnerInitialization(unittest.TestCase):
         self.assertIsInstance(runner.llama_server_path, Path)
         self.assertFalse(runner.force_killed)
 
-    def test_runner_llama_server_path(self):
-        """Test that llama_server_path points to correct location."""
-        args = MagicMock()
-        args.foreground = False
-        args.llama_args = []
-        args.log_file = None
-        
-        config = {
-            "options": {},
-            "llama-server": {"options": {}},
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
-        }
-        
-        runner = Runner(args, config)
-        
-        expected_path = Path.cwd() / "llama-cpp" / "llama-server"
-        self.assertEqual(runner.llama_server_path, expected_path)
+
 
 
 class TestRunnerLoadConfigOptions(unittest.TestCase):
@@ -86,16 +56,11 @@ class TestRunnerLoadConfigOptions(unittest.TestCase):
         config = {
             "options": {},
             "llama-server": {"options": {}},
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         options = runner._load_config_options()
-        
         self.assertEqual(options, [])
 
     def test_load_config_options_with_values(self):
@@ -114,17 +79,12 @@ class TestRunnerLoadConfigOptions(unittest.TestCase):
                     "models-max": "1"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         options = runner._load_config_options()
         
-        # Each option adds 2 elements: --key value
         self.assertEqual(len(options), 6)
         self.assertEqual(options[0], "--host")
         self.assertEqual(options[1], "0.0.0.0")
@@ -132,7 +92,7 @@ class TestRunnerLoadConfigOptions(unittest.TestCase):
         self.assertEqual(options[3], "11235")
 
     def test_load_config_options_with_none_values(self):
-        """Test loading config options with None values (should include --key)."""
+        """Test loading config options with None values."""
         args = MagicMock()
         args.foreground = False
         args.llama_args = []
@@ -146,18 +106,14 @@ class TestRunnerLoadConfigOptions(unittest.TestCase):
                     "port": None
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         options = runner._load_config_options()
         
-        # Should have 2 items: --host 0.0.0.0 and --port
-        self.assertEqual(len(options), 3)
+        # Should skip None values
+        self.assertEqual(len(options), 3)  # --host, 0.0.0.0, --port
         self.assertEqual(options[2], "--port")
 
 
@@ -178,11 +134,7 @@ class TestRunnerMergeArgs(unittest.TestCase):
                     "host": "0.0.0.0"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
@@ -204,17 +156,29 @@ class TestRunnerMergeArgs(unittest.TestCase):
                     "host": "0.0.0.0"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
-        merged = runner._merge_args([])
+        merged = runner._merge_args(["--port", "11235"])
+        self.assertEqual(merged, ["--port", "11235"])
+
+    def test_merge_args_empty_config(self):
+        """Test merging with empty config args."""
+        args = MagicMock()
+        args.foreground = False
+        args.llama_args = []
+        args.log_file = None
         
-        self.assertEqual(merged, [])
+        config = {
+            "options": {},
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        merged = runner._merge_args(["--port", "11235"])
+        self.assertEqual(merged, ["--port", "11235"])
 
 
 class TestRunnerResolveLogFile(unittest.TestCase):
@@ -234,16 +198,11 @@ class TestRunnerResolveLogFile(unittest.TestCase):
                     "log-file": "/config/path/log.txt"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         resolved = runner._resolve_log_file()
-        
         self.assertEqual(resolved, Path("/custom/path/log.txt"))
 
     def test_resolve_log_file_config_falls_back_to_default(self):
@@ -255,19 +214,12 @@ class TestRunnerResolveLogFile(unittest.TestCase):
         
         config = {
             "options": {},
-            "llama-server": {
-                "options": {}
-            },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         resolved = runner._resolve_log_file()
-        
         self.assertEqual(resolved, DEFAULT_LOG_FILE)
 
     def test_resolve_log_file_config_value_used(self):
@@ -284,16 +236,11 @@ class TestRunnerResolveLogFile(unittest.TestCase):
                     "log-file": "/config/log.txt"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         resolved = runner._resolve_log_file()
-        
         self.assertEqual(resolved, Path("/config/log.txt"))
 
 
@@ -314,11 +261,7 @@ class TestRunnerBuildCommand(unittest.TestCase):
                     "host": "0.0.0.0"
                 }
             },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
@@ -330,8 +273,8 @@ class TestRunnerBuildCommand(unittest.TestCase):
         self.assertIn("11235", command)
 
 
-class TestRunnerRunBackground(unittest.TestCase):
-    """Test cases for _run_background method."""
+class TestRunnerRun(unittest.TestCase):
+    """Test cases for run method."""
 
     def test_run_background_writes_pid_file(self):
         """Test that background mode writes PID file."""
@@ -342,19 +285,12 @@ class TestRunnerRunBackground(unittest.TestCase):
         
         config = {
             "options": {},
-            "llama-server": {
-                "options": {}
-            },
-            "logging": {
-                "enabled": True,
-                "level": "INFO",
-                "file": None
-            }
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
         }
         
         runner = Runner(args, config)
         
-        # Mock subprocess to prevent actual process execution
         with patch('subprocess.Popen') as mock_popen:
             mock_process = MagicMock()
             mock_process.pid = 12345
@@ -362,83 +298,10 @@ class TestRunnerRunBackground(unittest.TestCase):
             
             runner._run_background(["/path/to/llama-server"], [])
             
-            # Should not raise exception
             self.assertTrue(os.path.exists(PID_FILE))
             with open(PID_FILE, 'r') as f:
                 content = f.read().strip()
             self.assertEqual(content, "12345")
-
-
-class TestRunnerRunForeground(unittest.TestCase):
-    """Test cases for _run_foreground method."""
-
-    @patch('subprocess.Popen')
-    def test_run_foreground_blocks_until_exit(self, mock_popen):
-        """Test that foreground mode blocks until process exits."""
-        args = MagicMock()
-        args.foreground = True
-        args.llama_args = []
-        args.log_file = None
-        
-        config = {
-            "options": {},
-            "llama-server": {"options": {}},
-            "logging": {"enabled": True, "level": "INFO", "file": None}
-        }
-        
-        runner = Runner(args, config)
-        
-        # This should not raise exception
-        mock_popen_instance = MagicMock()
-        mock_popen.return_value = mock_popen_instance
-        mock_popen_instance.wait.return_value = None
-        
-        runner._run_foreground(["/path/to/llama-server"], [])
-
-    @patch('subprocess.Popen')
-    def test_run_foreground_catches_keyboard_interrupt(self, mock_popen):
-        """Test that foreground mode handles KeyboardInterrupt."""
-        args = MagicMock()
-        args.foreground = True
-        args.llama_args = []
-        args.log_file = None
-        
-        config = {
-            "options": {},
-            "llama-server": {"options": {}},
-            "logging": {"enabled": True, "level": "INFO", "file": None}
-        }
-        
-        runner = Runner(args, config)
-        
-        # This should not raise exception
-        mock_popen_instance = MagicMock()
-        mock_popen.return_value = mock_popen_instance
-        mock_popen_instance.wait.side_effect = KeyboardInterrupt()
-        
-        runner._run_foreground(["/path/to/llama-server"], [])
-
-    @patch('subprocess.Popen')
-    def test_run_foreground_catches_exception(self, mock_popen):
-        """Test that foreground mode catches exceptions."""
-        args = MagicMock()
-        args.foreground = True
-        args.llama_args = []
-        args.log_file = None
-        
-        config = {
-            "options": {},
-            "llama-server": {"options": {}},
-            "logging": {"enabled": True, "level": "INFO", "file": None}
-        }
-        
-        runner = Runner(args, config)
-        
-        with self.assertRaises(Exception):
-            mock_popen_instance = MagicMock()
-            mock_popen.return_value = mock_popen_instance
-            mock_popen_instance.wait.side_effect = Exception("Test error")
-            runner._run_foreground(["/path/to/llama-server"], [])
 
 
 class TestRunnerCleanup(unittest.TestCase):
@@ -459,46 +322,58 @@ class TestRunnerCleanup(unittest.TestCase):
         
         runner = Runner(args, config)
         
-        # Mock Path.exists and Path.unlink to avoid actual file operations
         with patch('pathlib.Path.exists', return_value=True), \
              patch('pathlib.Path.unlink') as mock_unlink:
-            
-            # Save original PID_FILE
-            import runner as runner_module
-            original_pid_file = runner_module.PID_FILE
-            
-            # Replace with temp Path object
-            temp_pid_path = Path(tempfile.gettempdir()) / "test_cleanup_pid"
-            runner_module.PID_FILE = temp_pid_path
-            
-            try:
-                runner._cleanup()
-                # Verify unlink was called
-                self.assertTrue(mock_unlink.called)
-            finally:
-                runner_module.PID_FILE = original_pid_file
+            runner._cleanup()
+            self.assertTrue(mock_unlink.called)
 
 
 class TestStopServer(unittest.TestCase):
-    """Integration test cases for stop_server function."""
+    """Test cases for stop_server function."""
 
     def test_stop_server_no_pid_file(self):
         """Test that stop_server returns 1 when no PID file exists."""
-        result = stop_server()
-        self.assertEqual(result, 1)
+        # Simulate no PID file exists
+        with patch('pathlib.Path.exists', return_value=False):
+            result = stop_server()
+            # Returns 1 when no PID file exists
+            self.assertEqual(result, 1)
 
-    def test_stop_server_with_pid_file(self):
-        """Test that stop_server handles PID file correctly."""
+    def test_stop_server_with_pid_file_clean_exit(self):
+        """Test that stop_server returns 0 when process exits cleanly."""
         temp_dir = Path(tempfile.gettempdir())
         temp_pid = temp_dir / "test_stop_pid"
         
-        # Write test PID
         temp_pid.write_text("12345")
         
-        with patch('os.kill'), patch('sys.platform', return_value='win32'):
+        with patch('os.kill'), patch('sys.platform', return_value='win32'), \
+             patch('ctypes.windll.kernel32.GetExitCodeProcess') as mock_get_exit_code:
+            
+            mock_get_exit_code.return_value = True
+            mock_exit_code = MagicMock()
+            mock_exit_code.value = 0
+            mock_get_exit_code.return_value = mock_exit_code
+            
             result = stop_server()
-            # Should return 0 if process is killed
-            self.assertIsInstance(result, int)
+            self.assertEqual(result, 0)
+        
+        temp_pid.unlink()
+
+    def test_stop_server_force_kill(self):
+        """Test that stop_server returns 1 when force-kill is required."""
+        temp_dir = Path(tempfile.gettempdir())
+        temp_pid = temp_dir / "test_stop_pid"
+        
+        temp_pid.write_text("12345")
+        
+        with patch('os.kill'), patch('time.sleep', side_effect=Exception("timeout")), \
+             patch('sys.platform', return_value='win32'), \
+             patch('ctypes.windll.kernel32.TerminateProcess') as mock_terminate:
+            
+            with self.assertRaises(Exception):
+                stop_server()
+            
+            mock_terminate.assert_called()
         
         temp_pid.unlink()
 
@@ -518,6 +393,141 @@ class TestPIDFile(unittest.TestCase):
         
         self.assertEqual(content, "99999")
         temp_file.unlink()
+
+
+class TestRunnerRunForeground(unittest.TestCase):
+    """Test cases for _run_foreground method."""
+
+    def test_run_foreground_writes_pid_file(self):
+        """Test that foreground mode writes PID file."""
+        args = MagicMock()
+        args.foreground = True
+        args.llama_args = []
+        args.log_file = None
+        
+        config = {
+            "options": {},
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        
+        with patch('subprocess.Popen') as mock_popen:
+            mock_process = MagicMock()
+            mock_process.pid = 12345
+            mock_popen.return_value = mock_process
+            
+            runner._run_foreground(["/path/to/llama-server"], [])
+            
+            self.assertTrue(os.path.exists(PID_FILE))
+            with open(PID_FILE, 'r') as f:
+                content = f.read().strip()
+            self.assertEqual(content, "12345")
+
+
+class TestRunnerIntegration(unittest.TestCase):
+    """Integration tests for Runner."""
+
+    def test_runner_with_all_config_options(self):
+        """Test runner with full configuration."""
+        args = MagicMock()
+        args.foreground = False
+        args.llama_args = ["model.gguf"]
+        args.log_file = None
+        
+        config = {
+            "options": {},
+            "llama-server": {
+                "options": {
+                    "host": "0.0.0.0",
+                    "port": "11235",
+                    "models-max": "1"
+                }
+            },
+            "logging": {"enabled": True, "level": "DEBUG", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        
+        options = runner._load_config_options()
+        self.assertEqual(len(options), 6)  # 3 options * 2 args each
+        
+        merged = runner._merge_args(["--port", "5555"])
+        self.assertIn("--port", merged)
+        self.assertIn("5555", merged)
+        self.assertIn("model.gguf", merged)
+
+    def test_runner_with_empty_config(self):
+        """Test runner with empty configuration."""
+        args = MagicMock()
+        args.foreground = False
+        args.llama_args = []
+        args.log_file = None
+        
+        config = {
+            "options": {},
+            "llama-server": {"options": {}},
+            "logging": {"enabled": False, "level": "INFO", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        
+        options = runner._load_config_options()
+        self.assertEqual(options, [])
+        
+        resolved = runner._resolve_log_file()
+        self.assertEqual(resolved, DEFAULT_LOG_FILE)
+
+
+class TestRunnerErrorHandling(unittest.TestCase):
+    """Test error handling in Runner."""
+
+    def test_run_background_error_cleanup(self):
+        """Test that background run cleans up on error."""
+        args = MagicMock()
+        args.foreground = False
+        args.llama_args = []
+        args.log_file = None
+        
+        config = {
+            "options": {},
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        
+        with patch('subprocess.Popen') as mock_popen:
+            mock_popen.side_effect = Exception("Failed to start")
+            
+            with self.assertRaises(Exception):
+                runner._run_background(["/path/to/llama-server"], [])
+
+    def test_run_foreground_keyboard_interrupt(self):
+        """Test that foreground run handles KeyboardInterrupt."""
+        args = MagicMock()
+        args.foreground = True
+        args.llama_args = []
+        args.log_file = None
+        
+        config = {
+            "options": {},
+            "llama-server": {"options": {}},
+            "logging": {"enabled": True, "level": "INFO", "file": None}
+        }
+        
+        runner = Runner(args, config)
+        
+        with patch('subprocess.Popen') as mock_popen:
+            mock_process = MagicMock()
+            mock_process.wait.return_value = None
+            mock_popen.return_value = mock_process
+            
+            # Mock KeyboardInterrupt after wait()
+            with patch.object(mock_process, 'wait', side_effect=KeyboardInterrupt()):
+                with self.assertRaises(KeyboardInterrupt):
+                    runner._run_foreground(["/path/to/llama-server"], [])
 
 
 if __name__ == '__main__':

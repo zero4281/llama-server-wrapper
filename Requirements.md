@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Software Requirements Document
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** April 2026  
 **Repository:** https://github.com/zero4281/llama-server-wrapper
 
@@ -136,7 +136,7 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 
 | Argument | Type | Description |
 |---|---|---|
-| `--self-update` | Flag | Pull the latest code from the `main` branch of the project GitHub repository and restart. |
+| `--self-update` | Flag | Update the wrapper's own scripts from the project GitHub repository. Prompts the user to choose between the latest release, a previous release, or the repository `main` branch HEAD before proceeding. |
 | `--install-llama` | Flag | Download and install the newest release of llama.cpp. Delegates to `LlamaUpdater` in `llama_updater.py`. |
 | `--update-llama` | Flag | Update an existing llama.cpp installation to the latest release. Delegates to `LlamaUpdater`. |
 | `--stop-server` | Flag | Signal `runner.py` to gracefully stop a running `llama-server` process. |
@@ -146,10 +146,49 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 
 ### 5.3 Self-update behaviour (`--self-update`)
 
-- Fetch the latest code from the `main` branch of `https://github.com/zero4281/llama-server-wrapper`.
-- Replace local files with the updated versions.
+#### 5.3.1 Source selection
+
+Before downloading anything, present the user with a numbered menu to choose the update source:
+
+```
+Select update source:
+  1) Latest release (recommended)
+  2) Previous release
+  3) Repository HEAD (main branch)
+Choice [1]:
+```
+
+- Pressing Enter without input selects the default (option 1, latest release).
+- Selecting **option 2** fetches the list of available releases from the GitHub Releases API (same endpoints as Section 6.2, with `owner = zero4281`, `repo = llama-server-wrapper`) and presents a numbered list for the user to choose from.
+- Selecting **option 3** downloads the current `main` branch HEAD as a ZIP archive from:
+  ```
+  https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip
+  ```
+
+#### 5.3.2 Confirmation prompt
+
+After the user selects a source, display the resolved version or commit reference and prompt for confirmation before modifying any local files:
+
+```
+Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip)
+Proceed with update? [Y/n]:
+```
+
+For a HEAD update the label should reflect the branch rather than a release tag, e.g.:
+
+```
+Selected: main branch HEAD
+Proceed with update? [Y/n]:
+```
+
+Pressing Enter confirms (default yes). Entering `n` cancels and exits with status code `0` without modifying any files.
+
+#### 5.3.3 Update execution
+
+- Download the selected archive or branch ZIP to a temporary location.
+- Replace local project files with the downloaded versions.
 - After a successful update, restart `main.py` with the same arguments that were originally passed.
-- If the update fails, print an error message and exit with a non-zero status code without modifying local files.
+- If the download or file replacement fails, print an error message and exit with a non-zero status code. Local files must not be left in a partially modified state; restore originals if replacement has already begun.
 
 ### 5.4 Startup sequence
 
@@ -211,6 +250,12 @@ The `assets` array in each release response contains the downloadable files. Eac
 - Query the GitHub Releases API using the endpoints described in Section 6.2.
 - By default, present the latest release for download.
 - Provide an interactive option to select an older release from the paginated list of available releases.
+- Before proceeding with any install or update, display the resolved release tag and asset name, then prompt the user for confirmation. The prompt must accept Enter as confirmation of the suggested default (proceed), with an explicit opt-out (e.g. `n`) to cancel. Example prompt:
+  ```
+  Selected release: b4906 (llama-b4906-bin-linux-x64.tar.gz)
+  Proceed with installation? [Y/n]:
+  ```
+  If the user cancels, print a message and exit with status code `0` without modifying any files.
 
 ### 6.4 Platform & architecture selection
 
@@ -327,4 +372,5 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.1 | April 2026 | zero4281 | Added user confirmation and source selection for `--self-update`; added user confirmation prompt to llama.cpp install/update |
 | 1.0 | April 2026 | zero4281 | Initial draft |

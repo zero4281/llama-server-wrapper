@@ -222,9 +222,10 @@ def parse_asset_name(name: str) -> Dict[str, str]:
     # Old format: platform-arch[-variant] (e.g., llama-server-linux-arm64)
     # New format: llama-{tag}-bin-{platform}-{arch} (e.g., llama-b8763-bin-ubuntu-x64)
     
-    # Try new format first: llama-{tag}-bin-{platform}-{arch}
+    # Try new format first: llama-{tag}-bin-{platform}-{arch}[-variant]
     # Tag can contain hyphens, so we need a more flexible pattern
-    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-(\w+)-(\w+)$"
+    # Also handle optional variant suffix like -vulkan, -cuda, etc.
+    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-(\w+)-(\w+)(?:-(\w+))?$"
     match = re.match(new_pattern, base_name)
     if match:
         platform = match.group(1).lower()
@@ -261,14 +262,31 @@ def parse_asset_name(name: str) -> Dict[str, str]:
             "variant": None
         }
     
-    # Try old format: platform-arch[-variant]
-    pattern = r"^(\w+)-(\w+)(?:-(\w+))?"
+    # Try old format: project-platform-arch
+    # e.g., llama-server-linux-arm64
+    pattern = r"^(\w+)-(\w+)-(\w+)-(\w+)"
     match = re.match(pattern, base_name)
     if match:
+        # group 1: project (llama), group 2: subproject (server), group 3: platform (linux), group 4: arch (arm64)
+        # Normalize platform to standard names
+        platform_map = {
+            "linux": "Linux",
+            "windows": "Windows",
+            "darwin": "Darwin",
+        }
+        platform = platform_map.get(match.group(3).lower(), match.group(3))
+        arch = match.group(4)
         return {
-            "platform": match.group(1),
-            "arch": match.group(2),
-            "variant": match.group(3) if match.group(3) else None
+            "platform": platform,
+            "arch": arch,
+            "variant": None
+        }
+        platform = platform_map.get(match.group(2).lower(), match.group(2))
+        arch = match.group(3) if match.group(3) else None
+        return {
+            "platform": platform,
+            "arch": arch,
+            "variant": None
         }
     
     return {"platform": None, "arch": None, "variant": None}
