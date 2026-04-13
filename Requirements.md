@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Software Requirements Document
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Date:** April 2026  
 **Repository:** https://github.com/zero4281/llama-server-wrapper
 
@@ -140,7 +140,6 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 | `--install-llama` | Flag | Download and install the newest release of llama.cpp. Delegates to `LlamaUpdater` in `llama_updater.py`. |
 | `--update-llama` | Flag | Update an existing llama.cpp installation to the latest release. Delegates to `LlamaUpdater`. |
 | `--stop-server` | Flag | Signal `runner.py` to gracefully stop a running `llama-server` process. |
-| `--foreground` | Flag | Run `llama-server` in the foreground (blocking) instead of as a background daemon. |
 | `--log-file` | String | Path for llama-server output log. Overrides the `log-file` value in `config.json`. Defaults to `llama-server.log` in the project folder if not set in either place. |
 | `<llama args>` | Pass-through | Any other arguments are collected and forwarded verbatim to `llama-server` via `runner.py`. |
 
@@ -340,15 +339,10 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 - Launch `./llama-cpp/llama-server` (`./llama-cpp/llama-server.exe` on Windows) with the assembled argument list.
 - Record the PID of the launched `llama-server` process.
 
-### 7.4 Foreground vs. daemon mode
+### 7.4 Daemon mode
 
-**Default — background daemon:**
 - Write the PID to `llama-server.pid` in the project directory.
 - `main.py` returns control to the shell immediately after launch.
-
-**With `--foreground` flag:**
-- Run `llama-server` in the foreground, blocking until it exits.
-- PID file is still written so that `--stop-server` can target the process.
 
 ### 7.5 Logging (llama-server output)
 
@@ -358,7 +352,7 @@ The log file path is resolved in the following order of precedence:
 2. `llama-server.options.log-file` in `config.json`
 3. Default: `llama-server.log` in the project folder
 
-The resolved path is passed to `llama-server` via its `--log-file` flag. In foreground mode, `llama-server` output is also mirrored to stdout.
+The resolved path is passed to `llama-server` via its `--log-file` flag.
 
 ### 7.6 Graceful shutdown
 
@@ -413,6 +407,7 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.3 | April 2026 | zero4281 | Removed `--foreground` command-line option |
 | 1.2 | April 2026 | zero4281 | Expanded Section 6 install workflow: interactive release tag + asset selection with auto-detected recommendation, all-assets display, checksum verification, download progress bar, delete-and-replace of existing llama-cpp folder, post-install success message and sanity check |
 | 1.1 | April 2026 | zero4281 | Added user confirmation and source selection for `--self-update`; added user confirmation prompt to llama.cpp install/update |
 | 1.0 | April 2026 | zero4281 | Initial draft |

@@ -55,8 +55,6 @@ class Main:
                           help="Gracefully stop a running llama-server")
 
         # Run options
-        parser.add_argument("--foreground", "-f", action="store_true",
-                          help="Run llama-server in foreground mode")
         parser.add_argument("--log-file", type=str, metavar="PATH",
                           help="Override llama-server log file path")
 
@@ -299,23 +297,6 @@ class Main:
         runner.run()
 
 
-    @staticmethod
-    def main() -> None:
-        """CLI entry point."""
-        try:
-            app = Main()
-            app.run()
-        except KeyboardInterrupt:
-            print("\n\nReceived interrupt (Ctrl+C), exiting...")
-            sys.exit(130)
-        except Exception as e:
-            # Safely check for logger using getattr to avoid AttributeError
-            if hasattr(app, 'logger') and app.logger:
-                getattr(app.logger, 'error', print)(f"Unhandled error: {e}")
-            else:
-                print(f"Error: {e}")
-            sys.exit(1)
-
-
 if __name__ == "__main__":
-    Main.main()
+    app = Main()
+    app.run()
