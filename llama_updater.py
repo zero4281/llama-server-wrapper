@@ -320,6 +320,41 @@ def get_available_platforms(release: dict) -> List[dict]:
     return list(platforms.values())
 
 
+def get_checksum_assets(release: dict) -> List[dict]:
+    """
+    Get checksum assets from release.
+    
+    Args:
+        release: Release data dictionary
+    
+    Returns:
+        List of checksum asset dictionaries
+    """
+    checksum_assets = []
+    for asset in release.get('assets', []):
+        name_lower = asset['name'].lower()
+        if name_lower.endswith('.sha256sum.txt') or name_lower.endswith('.sha256sum') or \
+           'sha256' in name_lower or 'checksum' in name_lower:
+            checksum_assets.append(asset)
+    return checksum_assets
+
+
+def download_checksum(archive_path: Path, checksum_asset: dict) -> Path:
+    """
+    Download checksum file.
+    
+    Args:
+        archive_path: Path to archive file
+        checksum_asset: Checksum asset dictionary
+    
+    Returns:
+        Path to downloaded checksum file
+    """
+    checksum_path = archive_path.with_suffix('.sha256sum.txt')
+    download_file(checksum_asset['browser_download_url'], checksum_path)
+    return checksum_path
+
+
 def select_release(release: dict, available_platforms: List[dict], 
                    detected_platform: str, detected_arch: str) -> Optional[dict]:
     """
@@ -372,7 +407,9 @@ def download_file(url: str, output_path: Path) -> Path:
                 downloaded += len(chunk)
                 if total > 0:
                     progress = downloaded / total * 100
-                    # Could add progress bar here
+                    # Print simple progress
+                    if progress % 5 < 1:  # Print every 5%
+                        print(f"Downloaded: {downloaded}/{total} ({progress:.1f}%)")
 
         return output_path
 
@@ -426,6 +463,55 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> None:
         raise ExtractionError(f"Extraction failed: {e}")
 
 
+def verify_checksum(archive_path: Path, checksum_path: Path) -> bool:
+    """
+    Verify archive against checksum file.
+    
+    Args:
+        archive_path: Path to archive file
+        checksum_path: Path to checksum file
+    
+    Returns:
+        True if verification passes
+    
+    Raises:
+        LlamaUpdaterError: If verification fails
+    """
+    import hashlib
+    
+    try:
+        # Calculate actual hash of archive
+        actual_hash = hashlib.sha256()
+        with open(archive_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b''):
+                actual_hash.update(chunk)
+        actual_hash_str = actual_hash.hexdigest()
+        
+        # Read expected hash from checksum file
+        with open(checksum_path, 'r') as f:
+            checksum_data = f.read().strip()
+        
+        # Parse expected hash (format: "hash  filename" or just "hash")
+        expected_hash = checksum_data.split()[0]
+        
+        print(f"Checking SHA-256 checksum...")
+        print(f"  Expected: {expected_hash}")
+        print(f"  Actual:   {actual_hash_str}")
+        
+        if actual_hash_str == expected_hash:
+            print("Checksum verification passed!")
+            return True
+        else:
+            print("Checksum verification FAILED!")
+            raise LlamaUpdaterError(
+                f"Checksum mismatch! Archive may be corrupted or tampered. "
+                f"Please try again or contact support."
+            )
+    
+    except Exception as e:
+        raise LlamaUpdaterError(f"Checksum verification failed: {e}")
+
+
 def ensure_executable(path: Path) -> None:
     """
     Make file executable on Unix systems.
@@ -440,6 +526,52 @@ def ensure_executable(path: Path) -> None:
             pass  # Ignore permission errors
 
 
+def verify_installation() -> None:
+    """
+    Run post-install sanity check (llama-server --version).
+    
+    Executes llama-server --version and displays output.
+    If check fails, prints warning but exits with code 0.
+    """
+    llama_server = LLAMA_CPP_DIR / "llama-server"
+    
+    if not llama_server.exists():
+        print("Warning: Could not find llama-server executable for verification")
+        return
+    
+    try:
+        result = subprocess.run(
+            [str(llama_server), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            version_output = result.stdout.strip()
+            print(f"\nllama-server version: {version_output}")
+        else:
+            print(f"\nWarning: llama-server --version returned exit code {result.returncode}")
+            print(f"Output: {result.stderr[:200]}")
+    except subprocess.TimeoutExpired:
+        print("\nWarning: llama-server --version timed out")
+    except Exception as e:
+        print(f"\nWarning: Could not verify llama-server version: {e}")
+
+
+def delete_existing_installation() -> None:
+    """
+    Delete existing llama-cpp folder if present.
+    
+    Removes the folder entirely without prompting or creating backups.
+    """
+    try:
+        if LLAMA_CPP_DIR.exists():
+            shutil.rmtree(LLAMA_CPP_DIR)
+            print(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
+    except Exception as e:
+        raise LlamaUpdaterError(f"Failed to delete existing llama-cpp folder: {e}")
+
+
 def install_release(release: dict, release_tag: str) -> None:
     """
     Install a llama.cpp release.
@@ -449,6 +581,9 @@ def install_release(release: dict, release_tag: str) -> None:
         release_tag: Release tag for reference
     """
     print(f"Installing llama.cpp release {release_tag}...")
+
+    # Delete existing installation first
+    delete_existing_installation()
 
     # Detect platform
     detected_platform, detected_arch = detect_platform()
@@ -484,6 +619,24 @@ def install_release(release: dict, release_tag: str) -> None:
         download_file(selected_asset['browser_download_url'], archive_path)
         print(f"Downloaded to {archive_path}")
 
+        # Check for checksum file
+        checksum_assets = get_checksum_assets(release)
+        if checksum_assets:
+            print("Checking checksum...")
+            checksum_asset = checksum_assets[0]
+            checksum_path = download_checksum(archive_path, checksum_asset)
+            
+            try:
+                if not verify_checksum(archive_path, checksum_path):
+                    # Verification failed - clean up
+                    archive_path.unlink(missing_ok=True)
+                    checksum_path.unlink(missing_ok=True)
+                    raise LlamaUpdaterError("Checksum verification failed")
+            finally:
+                checksum_path.unlink(missing_ok=True)
+        else:
+            print("No checksum file available for this release, skipping verification")
+
         # Extract
         print(f"\nExtracting to {LLAMA_CPP_DIR}...")
         extract_archive(archive_path, LLAMA_CPP_DIR)
@@ -497,6 +650,9 @@ def install_release(release: dict, release_tag: str) -> None:
         # Clean up
         archive_path.unlink(missing_ok=True)
         print("\nInstallation complete!")
+        
+        # Post-install sanity check
+        verify_installation()
 
     except Exception as e:
         # Clean up on error
@@ -564,7 +720,8 @@ class LlamaUpdater:
             print("Installation cancelled.")
             sys.exit(0)
 
-        install_release(release, release_tag)
+        # Use the class method which includes delete_existing_installation and verify_installation
+        LlamaUpdater.install_release(release, release_tag)
 
     def update(self) -> None:
         """

@@ -7,7 +7,7 @@
 `./Requirements.md` has been updated.  `Plan.md` is the implementation plan for this project.  Read it and the code to verify that `./Plan.md` is up to date with the requirements.  Update `./Plan.md` with the new requirements and then create `./Update.md` with information about the code updates that are still required.
 
 ## Update Prompt
-Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Don't update or execute anything in `./Unit Tests`.  Create Todos and then complete them.
+Read `./Requirements.md` and `./Plan.md`. Use `./Update.md` to update the code.  Don't update any of the Markdown files.  Don't update or execute anything in `./Unit Tests`.  Create Todos and then complete them.
 
 ## Create Unit Test Prompt
 Read `./Requirements.md` and `./Plan.md`.  Scan the code base, including `./Unit Tests`. There should be one unit test file for every code file and/or class.  Update existing unit tests or create new unit tests if a file doesn't exists. Unit tests should be created with [unittest](https://docs.python.org/3/library/unittest.html) and save them to `./Unit Tests`.  Don't create unit tests for files in `./Unit Tests`.  Only create unit tests for main.py and top level class functions related to command line arguments and `config.json`.  Don't just add unit tests; remove old, unvaluable, and redundant unit tests as well.
@@ -19,4 +19,4 @@ Run the unit tests in `./Unit Tests`.  Use the results of the unit tests to upda
 Read `./Requirements.md` and `./Plan.md`.  Read `./Bugs.md` and update the code.  Once the code is updated and the unit tests pass, remove the bug from `./Bugs.md`.
 
 ## Commit prompt
-If the project is on the main branch then create a new branch with the format: `[feature/bugfix]/[version]-[short-description]` (e.g. `feature/v1.1-user-confirmation-flows`).  Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Make sure the commit message is only once sentence long.  Then commit the update and push the commit.
+If the project is on the main branch then create a new branch with the format: `[feature/bugfix]/[version]-[short-description]` (e.g. `feature/v1.1-user-confirmation-flows`).  If the project is not on the main branch then use the current branch.  Check `git status`, use `git ls-files --others --exclude-standard` to find new files, and read `./Update.md` to create a git commit message.  Make sure the commit message is only once sentence long.  Then commit the update and push the commit.
