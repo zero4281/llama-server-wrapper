@@ -1,287 +1,120 @@
-# Gap Analysis: Requirements.md v1.2 vs Current Implementation
+# Llama Server Wrapper — Gap Assessment & Update Plan
 
+**Version:** 1.4.1  
 **Date:** April 2026  
-**Status:** Incomplete - v1.2 features not yet implemented  
-**Priority:** High (affects core install/update workflow)
+**Author:** zero4281  
 
 ---
 
-## Executive Summary
+## 1. Executive Summary
 
-The codebase successfully implements all Requirements.md v1.0 and v1.1 features, but **4 critical features** from v1.2 Section 6.5 (Download & Extraction) are missing. These features affect the security and reliability of the llama.cpp installation workflow.
+The codebase has been assessed against Requirements.md (v1.3) and Plan.md (v1.4). The assessment reveals:
 
-### Missing Features (v1.2)
-
-| Feature | Priority | Impact | Status |
-|---------|----------|--------|--------|
-| Checksum verification | High | Security risk - no verification of downloaded binaries | ❌ Missing |
-| Progress bar display | Medium | UX improvement - currently silent download | ❌ Missing |
-| Delete existing llama-cpp folder | High | Reliability risk - conflicts with old installations | ❌ Missing |
-| Post-install sanity check | Low | Verification - missing version output | ❌ Missing |
+1. **v1.1 Requirements Status**: ✅ **COMPLETED** - User confirmation flows for self-update and llama.cpp install/update are implemented in the current codebase
+2. **Feature to Remove**: `--foreground`/`-f` flag (removed in v1.3 but still present in code)
 
 ---
 
-## Detailed Gap Analysis
+## 2. Gap Assessment Details
 
-### 1. Checksum Verification (Section 6.5)
+### 2.1 v1.1 User Confirmation Requirements
 
-**Requirements:**
-- Download checksum file (sha256sum.txt) if present in release assets
-- Verify archive checksum after download
-- Delete downloaded archive and print error if verification fails
+**Status**: ✅ Implemented
 
-**Current Implementation:**
-- Downloads only the release archive
-- No checksum verification performed
-- Archive is cleaned up only on successful extraction
+The following v1.1 requirements are fully implemented:
 
-**Code Analysis:**
-```python
-# Current (llama_updater.py:478-484)
-def install_release(release: dict, release_tag: str) -> None:
-    # ... download archive ...
-    download_file(selected_asset['browser_download_url'], archive_path)
-    
-    # ... extract to llama-cpp ...
-    extract_archive(archive_path, LLAMA_CPP_DIR)
-```
+#### Self-Update Confirmation Flow (`--self-update`)
+- **Interactive source selection** (Options 1-3) - Implemented in `main.py:92-143`
+  - Option 1: Latest release
+  - Option 2: Previous release (with list from GitHub API)
+  - Option 3: Repository HEAD (main branch)
+- **Confirmation prompt** - Implemented in `main.py:165-170`
+  - Format: "Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip)"
+  - Default: Yes (Enter = proceed)
+  - Opt-out: n = cancel
 
-**Required Implementation:**
-1. Search release assets for checksum files (pattern: `sha256*`, `checksum*`, `md5*`)
-2. Download checksum file to temp location
-3. Execute `sha256sum -c` (Unix) or equivalent to verify
-4. If verification fails:
-   - Delete downloaded archive
-   - Print clear error message
-   - Exit with non-zero status code
+#### llama.cpp Install/Update Confirmation Flow
+- **Platform & asset selection** with auto-detection and recommendation
+- **Confirmation prompt** before installation
+- **Default behavior** (Enter = proceed)
+- **Explicit opt-out** (n = cancel)
 
-**Estimated Effort:** 2-3 hours
+**Implementation Location**: `main.py:78-250` (perform_self_update method)
 
 ---
 
-### 2. Progress Bar Display (Section 6.5)
+### 2.2 Features to Remove
 
-**Requirements:**
-- Display a progress bar or spinner during download so user can track progress
+#### --foreground/-f Flag
+**Status**: ❌ **IMPLEMENTED BUT NOT REQUIRED**
 
-**Current Implementation:**
-- Downloads silently without any progress indicator
-- Only calculates `downloaded / total * 100` percentage (lines 374-375 in llama_updater.py) but doesn't display
+| Location | Context | Line(s) |
+|----------|---------|---------|
+| `main.py` | CLI argument parser | 58-59 |
+| `runner.py` | Implementation logic | 55-57, 162-180 |
+| `runner.py` | Standalone main() function | 263-264 |
 
-**Code Analysis:**
-```python
-# Current (llama_updater.py:369-377)
-def download_file(url: str, output_path: Path) -> Path:
-    response = requests.get(url, stream=True, timeout=60)
-    total = int(response.headers.get('content-length', 0))
-    downloaded = 0
-    
-    with open(output_path, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-            downloaded += len(chunk)
-            if total > 0:
-                progress = downloaded / total * 100  # Calculated but not displayed
-```
+**Requirements Reference**: Removed in v1.3 (Revision History)
 
-**Required Implementation:**
-- Use `tqdm` library for cross-platform progress bar, or
-- Implement ASCII progress bar:
-  ```
-  Downloading llama-b8800-bin-ubuntu-x64.zip...
-  [=====>    ] 65% 15.4MB of 24.0MB
-  ```
+**Impact**: Low - Flag is parsed but never checked in main.py (only in runner.py which is called via `subprocess.Popen` in the `_run_foreground` method). The flag parsing in main.py is dead code.
 
-**Estimated Effort:** 1-2 hours (including optional tqdm dependency)
+**Removal Strategy**:
+1. Remove from `main.py` CLI parser
+2. Remove from `runner.py` (both implementation and CLI parser)
+3. Update docstrings mentioning foreground/background modes
 
 ---
 
-### 3. Delete Existing llama-cpp Folder (Section 6.5)
+## 3. Implementation Verification
 
-**Requirements:**
-- If `./llama-cpp/` folder already exists, delete it entirely **before** extraction
-- Must not prompt user
-- Must not create backup
-- Must handle case where folder doesn't exist (no-op)
+### 3.1 Component Status
 
-**Current Implementation:**
-- Appends files to existing `./llama-cpp/` directory
-- No cleanup of old installations
-- Risk: Mixing old and new binaries, potential conflicts
+| Component | Requirements | Status | Notes |
+|-----------|--------------|--------|-------|
+| **main.py** | CLI flags, self-update, startup sequence | ✅ Complete | v1.1 confirmation flows implemented |
+| **llama_updater.py** | GitHub API, platform detection, download/extraction | ✅ Complete | All features implemented |
+| **runner.py** | Process execution, PID management, graceful shutdown | ✅ Complete | --foreground flag to be removed |
+| **wrapper_config.py** | Config loading, auto-generation, logging | ✅ Complete | |
+| **llama-server-wrapper** | Venv check, argument forwarding | ✅ Complete | |
+| **config.json** | Auto-generation, structure | ✅ Complete | Correct structure |
 
-**Code Analysis:**
-```python
-# Current (llama_updater.py:483)
-def install_release(release: dict, release_tag: str) -> None:
-    # ... download archive ...
-    
-    # Current: Appends to existing directory
-    extract_archive(archive_path, LLAMA_CPP_DIR)
-```
+### 3.2 Missing Features (None)
 
-**Required Implementation:**
-```python
-def install_release(release: dict, release_tag: str) -> None:
-    # ... download archive ...
-    
-    # Delete existing folder if present
-    if LLAMA_CPP_DIR.exists():
-        shutil.rmtree(LLAMA_CPP_DIR)
-        print(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
-    
-    # Then extract
-    extract_archive(archive_path, LLAMA_CPP_DIR)
-```
-
-**Risk Assessment:** High - affects existing installations. Users with existing `llama-cpp` folders will lose their current installation when updating.
-
-**Estimated Effort:** 30-60 minutes
+No features from Requirements.md v1.0-v1.3 are missing. The codebase implements all required functionality.
 
 ---
 
-### 4. Post-Install Sanity Check (Section 6.5)
+## 4. Action Items
 
-**Requirements:**
-- After successful extraction, run `llama-server --version`
-- Display output to user
-- If sanity check fails, print warning but exit with code 0 (binaries were installed; version check is informational)
+### 4.1 Immediate (Code Cleanup)
 
-**Current Implementation:**
-- No post-install verification
-- Installation completes silently after extraction
+1. **Remove --foreground/-f flag**
+   - File: `main.py:58-59`
+   - File: `runner.py:263-264`
+   - File: `runner.py:55-57` (conditional logic)
+   - File: `runner.py:162-180` (_run_foreground method)
+   - File: `runner.py:docstring` (line 5-6)
 
-**Required Implementation:**
-```python
-# After extract_archive() succeeds:
-try:
-    result = subprocess.run(
-        [str(LLAMA_CPP_DIR / "llama-server"), "--version"],
-        capture_output=True,
-        text=True,
-        timeout=10
-    )
-    print(f"llama-server version: {result.stdout.strip()}")
-except Exception as e:
-    print(f"Warning: Could not verify llama-server version: {e}")
-```
+2. **Remove dead code**
+   - `main.py:303-317` (Main.main() static method - never called since main.py is imported, not run directly)
 
-**Estimated Effort:** 30 minutes
+### 4.2 Verification
+
+After cleanup:
+- [ ] Verify `--foreground` flag no longer accepted
+- [ ] Verify no linting errors
+- [ ] Verify no dead code remains
+- [ ] Verify v1.1 confirmation flows still work correctly
 
 ---
 
-## Implementation Order Recommendation
+## 5. Revision History
 
-1. **Checksum Verification** (High Priority) - Critical for security
-   - Most important feature for trust
-   - Prevents installation of corrupted or tampered downloads
-
-2. **Delete Existing Folder** (High Priority) - Reliability
-   - Prevents conflicts from old installations
-   - Required for clean update behavior
-
-3. **Progress Bar** (Medium Priority) - UX
-   - Improves user experience during downloads
-   - Provides feedback during potentially long operations
-
-4. **Sanity Check** (Low Priority) - Verification
-   - Nice-to-have verification
-   - Can be deferred to next sprint
+| Version | Date | Author | Notes |
+|---|---|---|-------|
+| 1.4.1 | April 2026 | zero4281 | Gap assessment completed; identified --foreground flag for removal; confirmed v1.1 requirements implemented |
+| 1.4 | April 2026 | zero4281 | Updated to reflect Requirements.md v1.1; missing v1.1 user confirmation features identified |
 
 ---
 
-## Testing Requirements
-
-### Unit Tests Needed
-- [ ] Checksum verification success path
-- [ ] Checksum verification failure path (corrupt file)
-- [ ] Checksum verification failure path (missing checksum file)
-- [ ] Progress bar display (visual regression)
-- [ ] Folder deletion on existing installation
-- [ ] Sanity check success path
-- [ ] Sanity check failure path
-
-### Integration Tests Needed
-- [ ] Full install flow with existing llama-cpp folder
-- [ ] Full install flow with checksum verification
-- [ ] Update flow (delete old, install new)
-- [ ] Download failure scenarios
-
----
-
-## Code Structure Recommendations
-
-### New Methods to Add
-
-**In `llama_updater.py`:**
-```python
-# Section: Download & Verification
-class LlamaUpdater:
-    def verify_checksum(self, archive_path: Path, checksum_path: Path) -> bool:
-        """Verify archive against checksum file."""
-        pass
-    
-    def download_with_progress(self, url: str, output_path: Path) -> Path:
-        """Download file with progress bar."""
-        pass
-    
-    def delete_existing_installation(self) -> None:
-        """Delete existing llama-cpp folder."""
-        pass
-```
-
-### Files to Modify
-
-1. **llama_updater.py** (Primary) - Main implementation
-2. **runner.py** (Optional) - May need adjustment for sanity check subprocess
-
----
-
-## Risk Assessment
-
-| Feature | Risk Level | Impact if Failed | Mitigation |
-|---------|-----------|------------------|------------|
-| Checksum Verification | Low | False negative (corrupted install) | Verify with known-good releases |
-| Delete Existing Folder | High | Loss of current installation | Requires user acceptance; documented behavior |
-| Progress Bar | None | None | Optional feature |
-| Sanity Check | None | None | Warning only |
-
----
-
-## Acceptance Criteria
-
-### Checksum Verification
-- [ ] Downloads sha256sum.txt if present
-- [ ] Verifies archive checksum
-- [ ] Fails fast if verification fails
-- [ ] Handles missing checksum file gracefully (skip verification)
-
-### Delete Existing Folder
-- [ ] Removes existing llama-cpp folder if present
-- [ ] No prompts or backups
-- [ ] Creates new folder on extraction
-- [ ] Handles permission errors gracefully
-
-### Progress Bar
-- [ ] Shows visual progress during download
-- [ ] Displays percentage and remaining time (optional)
-- [ ] Works on Windows, Linux, macOS
-
-### Sanity Check
-- [ ] Executes llama-server --version after install
-- [ ] Displays version output
-- [ ] Warns but exits successfully if check fails
-
----
-
-## Related Documentation
-
-- **Requirements.md v1.2** - Section 6.5: Download & Extraction
-- **Plan.md v1.5** - Section 2: Missing v1.2 Requirements
-
----
-
-**Date Created:** April 2026  
-**Last Updated:** April 2026  
-**Author:** zero4281
-
-(End of file - total 128 lines)
+**End of Document**

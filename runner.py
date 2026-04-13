@@ -2,8 +2,7 @@
 runner.py — Process execution and management for llama-server.
 
 This module handles launching llama-server, managing its lifecycle,
-and implementing foreground/background modes with proper signal
-handling and graceful shutdown.
+and implementing graceful shutdown with proper signal handling.
 """
 
 import os
@@ -52,15 +51,11 @@ class Runner:
         # Build command
         command = self._build_command(log_path, merged_args)
         
-        # Execute based on foreground flag
-        if self.args.foreground:
-            self._run_foreground(command, merged_args)
-        else:
-            self._run_background(command, merged_args)
+        self._run_background(command, merged_args)
 
     def _load_config_options(self) -> list:
         """
-        Load options from config.json's llama-server.options section.
+        Load options from config.json\'s llama-server.options section.
 
         Returns:
             List of command-line arguments
@@ -159,28 +154,8 @@ class Runner:
             self._cleanup()
             raise e
 
-    def _run_foreground(self, command: list, merged_args: list) -> None:
-        """
-        Run llama-server in the foreground (blocking).
-
-        Args:
-            command: Command to execute
-            merged_args: Merged arguments (kept for consistency with signature)
-        """
-        # Start process
-        process = subprocess.Popen(command)
-
-        # Write PID file
-        pid = process.pid
-        with open(self.pid_file, "w") as f:
-            f.write(str(pid))
-        print(f"llama-server started with PID {pid}")
-
-        # Block until process exits (KeyboardInterrupt will propagate)
-        process.wait()
-
     def _cleanup(self) -> None:
-        """Clean up resources."""
+        """Clean up resources."""  
         if self.pid_file.exists():
             try:
                 self.pid_file.unlink()
@@ -203,7 +178,10 @@ def stop_server() -> int:
         print("No running llama-server found (no PID file).")
         return 1
 
-    # Wait up to 60 seconds
+    force_killed = False
+
+    try:
+        # Wait up to 60 seconds
         for i in range(60):
             try:
                 if sys.platform == 'win32':
@@ -219,9 +197,14 @@ def stop_server() -> int:
                         print(f"Process exited with code {exit_code.value}")
                         return 0
                 else:
-                    if not os.path.exists(PID_FILE):
-                        print("Process exited cleanly")
-                        return 0
+                    print("Stopping Linux Server.")
+                    try:
+                        ret = os.waitpid(pid, os.WNOHANG)
+                        if ret[0] > 0:
+                            print("Process exited cleanly")
+                            return 0
+                    except ProcessLookupError:
+                        break
                 time.sleep(1)
             except OSError:
                 break
@@ -230,6 +213,7 @@ def stop_server() -> int:
             print("Process did not exit cleanly, forcing termination...")
             
             if sys.platform == 'win32':
+                import ctypes
                 import ctypes
                 import ctypes.wintypes
                 kernel32 = ctypes.windll.kernel32
@@ -253,28 +237,3 @@ def stop_server() -> int:
     except Exception as e:
         print(f"Error stopping llama-server: {e}")
         return 2
-
-
-def main():
-    """CLI entry point for runner."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run llama-server")
-    parser.add_argument("--foreground", "-f", action="store_true", 
-                       help="Run in foreground mode")
-    parser.add_argument("--log-file", type=str, help="Override log file path")
-    parser.add_argument("--stop", action="store_true", help="Stop running server")
-    parser.add_argument("args", nargs="*", help="Additional arguments for llama-server")
-
-    args = parser.parse_args()
-
-    if args.stop:
-        exit_code = stop_server()
-        sys.exit(exit_code)
-    else:
-        # In real implementation, this would create a Runner and call run()
-        print("This is a standalone runner. Use via main.py.")
-
-
-if __name__ == "__main__":
-    main()
