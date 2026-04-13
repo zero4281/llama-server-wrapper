@@ -720,8 +720,8 @@ class LlamaUpdater:
             print("Installation cancelled.")
             sys.exit(0)
 
-        # Use the class method which includes delete_existing_installation and verify_installation
-        LlamaUpdater.install_release(release, release_tag)
+        # Call install_release which handles the full workflow
+        install_release(release, release_tag)
 
     def update(self) -> None:
         """
