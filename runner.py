@@ -167,25 +167,17 @@ class Runner:
             command: Command to execute
             merged_args: Merged arguments (kept for consistency with signature)
         """
-        try:
-            # Start process
-            process = subprocess.Popen(command)
+        # Start process
+        process = subprocess.Popen(command)
 
-            # Write PID file
-            pid = process.pid
-            with open(self.pid_file, "w") as f:
-                f.write(str(pid))
-            print(f"llama-server started with PID {pid}")
+        # Write PID file
+        pid = process.pid
+        with open(self.pid_file, "w") as f:
+            f.write(str(pid))
+        print(f"llama-server started with PID {pid}")
 
-            # Block until process exits
-            process.wait()
-
-        except KeyboardInterrupt:
-            print("\nReceived interrupt, stopping server...")
-            self._cleanup()
-        except Exception as e:
-            self._cleanup()
-            raise e
+        # Block until process exits (KeyboardInterrupt will propagate)
+        process.wait()
 
     def _cleanup(self) -> None:
         """Clean up resources."""
@@ -210,25 +202,6 @@ def stop_server() -> int:
     except (FileNotFoundError, ValueError):
         print("No running llama-server found (no PID file).")
         return 1
-
-    print(f"Stopping llama-server (PID {pid})...")
-
-    try:
-        # Send SIGTERM (or TerminateProcess on Windows)
-        if sys.platform == 'win32':
-            import ctypes
-            import ctypes.wintypes
-            kernel32 = ctypes.windll.kernel32
-            kernel32.TerminateProcess(ctypes.c_int(pid), 0)
-        else:
-            os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        # Process already exited
-        print("Process already exited")
-        # Remove PID file before returning
-        if PID_FILE.exists():
-            PID_FILE.unlink()
-        return 0
 
     # Wait up to 60 seconds
         for i in range(60):

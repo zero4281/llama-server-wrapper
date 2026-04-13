@@ -87,23 +87,23 @@ def detect_platform() -> Tuple[str, str]:
     if system == "Linux":
         if "aarch64" in machine or "arm64" in machine:
             return "Linux", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "Linux", "x64"  # Normalize to x64 for matching
         return "Linux", "aarch64"  # fallback
 
     elif system == "Windows":
         if "aarch64" in machine or "arm64" in machine:
             return "Windows", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "Windows", "x64"  # Normalize to x64 for matching
-        return "Windows", "amd64"  # fallback
+        return "Windows", "x64"  # fallback
 
     elif system == "Darwin":
         if "aarch64" in machine or "arm64" in machine:
             return "macOS", "arm64"
-        if "x86_64" in machine:
+        if "x86_64" in machine or "amd64" in machine:
             return "macOS", "x64"  # Normalize to x64 for matching
-        return "macOS", "amd64"  # fallback
+        return "macOS", "x64"  # fallback
 
     else:
         return system, machine
@@ -225,11 +225,13 @@ def parse_asset_name(name: str) -> Dict[str, str]:
     # Try new format first: llama-{tag}-bin-{platform}-{arch}[-variant]
     # Tag can contain hyphens, so we need a more flexible pattern
     # Also handle optional variant suffix like -vulkan, -cuda, etc.
-    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-(\w+)-(\w+)(?:-(\w+))?$"
+    # Platform can contain hyphens (e.g., rocky-linux), arch is always x64 or arm64
+    new_pattern = r"^llama-[a-zA-Z0-9_-]+-bin-([a-zA-Z0-9-]+)-(x64|arm64)(?:-(\w+))?$"
     match = re.match(new_pattern, base_name)
     if match:
         platform = match.group(1).lower()
         arch = match.group(2).lower()
+        variant = match.group(3)  # Capture variant if present (e.g., vulkan, cuda)
         # Convert platform names to standard names
         platform_map = {
             "ubuntu": "Linux",
@@ -256,10 +258,19 @@ def parse_asset_name(name: str) -> Dict[str, str]:
             "kali": "Linux",
             "parrot": "Linux",
         }
+        # Handle compound names like rocky-linux
+        if platform in platform_map:
+            platform_name = platform_map[platform]
+        elif '-' in platform and platform.split('-')[0] in platform_map:
+            platform_name = platform_map[platform.split('-')[0]]
+        else:
+            platform_name = platform
+        # Capitalize first letter for consistency with test expectations
+        platform_name = platform_name.capitalize()
         return {
-            "platform": platform_map.get(platform, platform),
+            "platform": platform_name,
             "arch": arch,
-            "variant": None
+            "variant": variant if variant else None
         }
     
     # Try old format: project-platform-arch
@@ -275,7 +286,9 @@ def parse_asset_name(name: str) -> Dict[str, str]:
             "darwin": "Darwin",
         }
         platform = platform_map.get(match.group(3).lower(), match.group(3))
-        arch = match.group(4)
+        arch = match.group(4).lower()
+        # Capitalize first letter
+        platform = platform.capitalize()
         return {
             "platform": platform,
             "arch": arch,
@@ -313,9 +326,10 @@ def get_available_platforms(release: dict) -> List[dict]:
                     "platform": parsed["platform"],
                     "arch": parsed["arch"],
                     "variant": parsed["variant"],
-                    "assets": []
+                    "assets": [asset]
                 }
-            platforms[key]["assets"].append(asset)
+            else:
+                platforms[key]["assets"].append(asset)
 
     return list(platforms.values())
 
@@ -597,16 +611,81 @@ def install_release(release: dict, release_tag: str) -> None:
         print(f"  {i}. {platform_info['platform']} {platform_info['arch']}{variant}")
 
     # Select platform
-    selected_asset = select_release(release, available_platforms, 
-                                   detected_platform, detected_arch)
+    selected_asset = None
     
-    if selected_asset:
-        print(f"\nSelected: {selected_asset['name']}")
+    # Find the matching platform info
+    for platform_info in available_platforms:
+        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
+            selected_asset = platform_info['assets'][0]  # First one is default
+            break
+    
+    # Find the detected platform info
+    selected_platform_info = None
+    detected_idx = None
+    for i, platform_info in enumerate(available_platforms, 1):
+        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
+            selected_platform_info = platform_info
+            detected_idx = i
+            break
+
+    if selected_platform_info:
+        # Found a match - confirm platform selection
+        print(f"\nSelected: {detected_platform} {detected_arch}")
+        
+        # Ask for user confirmation
+        choice = input(f"Select a platform [{detected_idx}]: ").strip()
+        if choice == "":
+            choice = str(detected_idx)
+        try:
+            choice_idx = int(choice) - 1
+            if choice_idx < 0 or choice_idx >= len(available_platforms):
+                print("Invalid choice. Using detected platform.")
+                selected_platform = selected_platform_info
+            else:
+                selected_platform = available_platforms[choice_idx]
+        except (ValueError, IndexError):
+            print("Invalid input. Using detected platform.")
+            selected_platform = selected_platform_info
+        
+        # Show zip files for the selected platform
+        print(f"\nAvailable zip files for {selected_platform['platform']} {selected_platform['arch']}:")
+        for i, asset in enumerate(selected_platform['assets'], 1):
+            is_default = (i == 1)
+            marker = "  ← recommended" if is_default else ""
+            print(f"  {i}. {asset['name']} {marker}")
+        
+        # Show selected release info
+        print(f"\nSelected: {release_tag} ({selected_platform['assets'][0]['name']})")
+        
+        # Ask for zip file selection
+        zip_choice = input(f"\nSelect a zip file [1]: ").strip()
+        if zip_choice == "":
+            zip_choice = "1"
+        try:
+            zip_choice_idx = int(zip_choice) - 1
+            if zip_choice_idx < 0 or zip_choice_idx >= len(selected_platform['assets']):
+                print("Invalid choice. Using first option.")
+                selected_asset = selected_platform['assets'][0]
+            else:
+                selected_asset = selected_platform['assets'][zip_choice_idx]
+        except ValueError:
+            print("Invalid input. Using first option.")
+            selected_asset = selected_platform['assets'][0]
     else:
-        print("\nNo matching platform found. Please select manually.")
-        # For simplicity, we'll use the first asset in a real implementation
-        # In a full implementation, we'd prompt user to select
-        selected_asset = available_platforms[0]["assets"][0] if available_platforms else None
+        # No matching platform found - show all assets from release
+        print("\nNo matching platform found. Showing first 5 assets from release...")
+        for i, asset in enumerate(release.get('assets', [])[:5], 1):
+            print(f"  {i}. {asset['name']} ({asset['size']//1024//1024}MB)")
+        
+        choice = input("\nSelect asset [1]: ").strip()
+        if choice == "":
+            choice = "1"
+        choice_idx = int(choice) - 1
+        if choice_idx < 0 or choice_idx >= len(release.get('assets', [])):
+            print("Invalid choice. Using first option.")
+            selected_asset = release['assets'][0] if release.get('assets') else None
+        else:
+            selected_asset = release['assets'][choice_idx]
 
     if not selected_asset:
         raise PlatformNotFoundError("No matching platform found in release")
@@ -681,46 +760,7 @@ class LlamaUpdater:
         print(f"Latest release: {release_tag} ({release['name']})")
         print(f"Published: {release['published_at']}")
 
-        # Get available platforms
-        available_platforms = get_available_platforms(release)
-        print(f"\nAvailable platforms in this release:")
-        for i, platform_info in enumerate(available_platforms, 1):
-            variant = f" ({platform_info['variant']})" if platform_info['variant'] else ""
-            print(f"  {i}. {platform_info['platform']} {platform_info['arch']}{variant}")
-
-        # Detect platform
-        detected_platform, detected_arch = detect_platform()
-        
-        # Select platform
-        selected_asset = select_release(release, available_platforms, 
-                                      detected_platform, detected_arch)
-        
-        if selected_asset:
-            print(f"\nSelected: {selected_asset['name']}")
-        else:
-            print("\nNo matching platform found. Please select manually.")
-            # Show all assets for selection
-            print("\nAvailable assets:")
-            for i, asset in enumerate(release.get('assets', [])[:5], 1):  # Show first 5
-                print(f"  {i}. {asset['name']} ({asset['size']//1024//1024}MB)")
-            
-            choice = input("\nSelect asset [1]: ").strip()
-            choice_idx = int(choice) - 1
-            if choice_idx < 0 or choice_idx >= len(release.get('assets', [])):
-                print("Invalid choice. Exiting.")
-                sys.exit(0)
-            selected_asset = release['assets'][choice_idx]
-
-        # Confirmation prompt
-        release_name = f"{selected_asset['name']}"
-        print(f"\nSelected release: {release_tag} ({release_name})")
-        confirm = input("Proceed with installation? [Y/n]: ").strip().lower()
-        
-        if confirm == "n" or confirm == "no":
-            print("Installation cancelled.")
-            sys.exit(0)
-
-        # Call install_release which handles the full workflow
+        # Call install_release which handles platform detection, zip selection, and installation
         install_release(release, release_tag)
 
     def update(self) -> None:

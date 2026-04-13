@@ -225,9 +225,9 @@ class TestPlatformSelection(unittest.TestCase):
         
         platforms = get_available_platforms(release)
         self.assertEqual(len(platforms), 1)  # Single platform
-        # Returns list of asset dicts
-        self.assertEqual(len(platforms[0]), 1)  # First asset
-        self.assertEqual(platforms[0]["name"], "llama-b8763-bin-ubuntu-x64.tar.gz")
+        # Returns list of platform info dicts with assets
+        self.assertEqual(len(platforms[0]["assets"]), 2)  # Two assets merged
+        self.assertIn("llama-b8763-bin-ubuntu-x64.tar.gz", [a["name"] for a in platforms[0]["assets"]])
 
     def test_select_release_matches_platform(self):
         """Test that select_release finds matching platform."""

@@ -333,8 +333,8 @@ class TestStopServer(unittest.TestCase):
 
     def test_stop_server_no_pid_file(self):
         """Test that stop_server returns 1 when no PID file exists."""
-        # Simulate no PID file exists
-        with patch('pathlib.Path.exists', return_value=False):
+        # Simulate no PID file exists by patching open to raise FileNotFoundError
+        with patch('builtins.open', side_effect=FileNotFoundError()):
             result = stop_server()
             # Returns 1 when no PID file exists
             self.assertEqual(result, 1)

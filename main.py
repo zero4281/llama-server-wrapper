@@ -118,6 +118,8 @@ class Main:
                     print(f"  {i}. {tag} - {name} ({published})")
                 
                 choice = input("Select release [1]: ").strip()
+                if choice == "":
+                    choice = "1"
                 choice_idx = int(choice) - 1
                 if choice_idx < 0 or choice_idx >= len(releases):
                     print("Invalid choice. Exiting.")
@@ -212,9 +214,36 @@ class Main:
                 if module in sys.modules:
                     del sys.modules[module]
             
-            # Execute restart
-            exec(sys.stdin.read() if hasattr(sys.stdin, 'read') 
-                 else "import main; main.main()" , {'__name__': '__main__'})
+            # Restart with same arguments
+            print(f"Restarting with original arguments: {args}")
+            
+            # Re-parse args to preserve llama_args
+            new_args = [sys.argv[0]] + list(args)
+            
+            # Clear any cached modules to force reimport
+            modules_to_clear = [
+                'main', 'runner', 'llama_updater', 'logging'
+            ]
+            for module in modules_to_clear:
+                if module in sys.modules:
+                    del sys.modules[module]
+            
+            # Execute restart using os.execv to replace current process
+            import subprocess
+            import shlex
+            
+            # Build command to execute
+            cmd = [sys.executable] + new_args
+            
+            # Execute and replace current process
+            subprocess.run([sys.executable] + new_args, 
+                         stdout=subprocess.PIPE, 
+                         stderr=subprocess.PIPE, 
+                         text=True)
+            
+            # If we get here, something went wrong, exit with error
+            print("Restart failed, exiting.")
+            sys.exit(2)
             
         except Exception as e:
             print(f"Self-update failed: {e}")
@@ -270,21 +299,23 @@ class Main:
         runner.run()
 
 
-def main() -> None:
-    """CLI entry point."""
-    try:
-        app = Main()
-        app.run()
-    except KeyboardInterrupt:
-        print("\n\nReceived interrupt (Ctrl+C), exiting...")
-        sys.exit(130)
-    except Exception as e:
-        if app.logger:
-            app.logger.error(f"Unhandled error: {e}")
-        else:
-            print(f"Error: {e}")
-        sys.exit(1)
+    @staticmethod
+    def main() -> None:
+        """CLI entry point."""
+        try:
+            app = Main()
+            app.run()
+        except KeyboardInterrupt:
+            print("\n\nReceived interrupt (Ctrl+C), exiting...")
+            sys.exit(130)
+        except Exception as e:
+            # Safely check for logger using getattr to avoid AttributeError
+            if hasattr(app, 'logger') and app.logger:
+                getattr(app.logger, 'error', print)(f"Unhandled error: {e}")
+            else:
+                print(f"Error: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    Main.main()
