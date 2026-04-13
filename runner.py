@@ -178,7 +178,10 @@ def stop_server() -> int:
         print("No running llama-server found (no PID file).")
         return 1
 
-    # Wait up to 60 seconds
+    force_killed = False
+
+    try:
+        # Wait up to 60 seconds
         for i in range(60):
             try:
                 if sys.platform == 'win32':
@@ -194,9 +197,14 @@ def stop_server() -> int:
                         print(f"Process exited with code {exit_code.value}")
                         return 0
                 else:
-                    if not os.path.exists(PID_FILE):
-                        print("Process exited cleanly")
-                        return 0
+                    print("Stopping Linux Server.")
+                    try:
+                        ret = os.waitpid(pid, os.WNOHANG)
+                        if ret[0] > 0:
+                            print("Process exited cleanly")
+                            return 0
+                    except ProcessLookupError:
+                        break
                 time.sleep(1)
             except OSError:
                 break
@@ -205,6 +213,7 @@ def stop_server() -> int:
             print("Process did not exit cleanly, forcing termination...")
             
             if sys.platform == 'win32':
+                import ctypes
                 import ctypes
                 import ctypes.wintypes
                 kernel32 = ctypes.windll.kernel32
