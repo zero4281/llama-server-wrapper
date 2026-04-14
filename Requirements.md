@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Software Requirements Document
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** April 2026  
 **Repository:** https://github.com/zero4281/llama-server-wrapper
 
@@ -15,15 +15,18 @@
 5. [Main Entry Point](#5-main-entry-point-mainpy)
 6. [llama.cpp Update/Download Module](#6-llamacpp-updatedownload-module-llama_updaterpy)
 7. [Run Script](#7-run-script-runnerpy)
-8. [Non-Functional Requirements](#8-non-functional-requirements)
-9. [Out of Scope](#9-out-of-scope)
-10. [Revision History](#revision-history)
+8. [CLI User Interface Module](#8-cli-user-interface-module-ui_managerpy)
+9. [Non-Functional Requirements](#9-non-functional-requirements)
+10. [Out of Scope](#10-out-of-scope)
+11. [Revision History](#revision-history)
 
 ---
 
 ## 1. Overview
 
-This document defines the requirements for the Llama Server Wrapper project — a set of Python and Bash scripts that automate the download, installation, updating, and execution of `llama-server` from the llama.cpp project. It covers five components: the Bash start script, the Python entry point (`main.py`), the llama.cpp update/download module, the run script, and the shared configuration file.
+This document defines the requirements for the Llama Server Wrapper project — a set of Python and Bash scripts that automate the download, installation, updating, and execution of `llama-server` from the llama.cpp project. It covers six components: the Bash start script, the Python entry point (`main.py`), the llama.cpp update/download module, the run script, the shared configuration file, and the CLI user interface module (`ui_manager.py`).
+
+All interactive menus, prompts, progress bars, and confirmation dialogs are rendered using the `curses` module (Python standard library) with a black background and green text.
 
 | Property | Value |
 |---|---|
@@ -31,7 +34,7 @@ This document defines the requirements for the Llama Server Wrapper project — 
 | Primary Language | Python 3.12+ |
 | Secondary Language | Bash (start script only) |
 | Minimum Python Version | 3.12 |
-| Target Platforms | Linux, Windows, macOS (auto-detected at runtime) |
+| Target Platforms | Linux, macOS, Windows (via WSL only) |
 | llama.cpp Source | https://github.com/ggml-org/llama.cpp/releases |
 
 ---
@@ -44,12 +47,13 @@ llama-server-wrapper/
 ├── main.py                # Entry point
 ├── llama_updater.py       # llama.cpp download/update module
 ├── runner.py              # Run script
+├── ui_manager.py          # ncurses CLI user interface module
 ├── requirements.txt       # Python dependencies
 ├── config.json            # Runtime configuration (auto-generated if missing)
 ├── .venv/                 # Python virtual environment (created by user)
 │   └── bin/activate
 ├── llama-cpp/             # Extracted llama.cpp release binaries
-│   └── llama-server       # (llama-server.exe on Windows)
+│   └── llama-server       # (llama-server.exe on Windows/WSL)
 └── llama-server.log       # llama-server output log (when enabled)
 ```
 
@@ -131,6 +135,17 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 - Written in Python 3.12+.
 - All logic must be encapsulated in a class within an appropriate namespace (e.g. `llama_wrapper.Main`).
 - The `if __name__ == '__main__'` block must only instantiate the class and call its `run` method.
+- All interactive output (menus, prompts, progress, confirmations) must be delegated to `UIManager` from `ui_manager.py`.
+
+### 5.1.1 WSL detection
+
+- On startup, detect whether the process is running on Windows outside of WSL by checking the platform with Python's `platform` module.
+- If running on native Windows (i.e. not inside WSL), print a warning message to stderr before initialising the ncurses UI:
+  ```
+  Warning: Running on native Windows. Not all functionality may work as intended.
+  For full support, please run inside Windows Subsystem for Linux (WSL).
+  ```
+- Continue execution after the warning; do not exit.
 
 ### 5.2 Command-line arguments
 
@@ -147,7 +162,7 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 
 #### 5.3.1 Source selection
 
-Before downloading anything, present the user with a numbered menu to choose the update source:
+Before downloading anything, present the user with a numbered menu (rendered via `UIManager`) to choose the update source:
 
 ```
 Select update source:
@@ -166,7 +181,7 @@ Choice [1]:
 
 #### 5.3.2 Confirmation prompt
 
-After the user selects a source, display the resolved version or commit reference and prompt for confirmation before modifying any local files:
+After the user selects a source, display the resolved version or commit reference via `UIManager` and prompt for confirmation before modifying any local files:
 
 ```
 Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip)
@@ -213,6 +228,7 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 - Written in Python 3.12+.
 - All logic must be encapsulated in a class (e.g. `llama_wrapper.updater.LlamaUpdater`).
 - Never executed directly; always instantiated by `main.py`.
+- All interactive output (menus, prompts, progress bars, confirmations) must be delegated to `UIManager` from `ui_manager.py`.
 
 ### 6.2 GitHub API usage
 
@@ -248,7 +264,7 @@ The `assets` array in each release response contains the downloadable files. Eac
 
 #### 6.3.1 Tag selection prompt
 
-Present a numbered menu of release tags fetched from the GitHub Releases API. Option `0` allows the user to type a tag manually; options `1`–`5` are the five most recent release tags. Pressing Enter without a selection installs the most recent release (option `1`). Example:
+Present a numbered menu of release tags (rendered via `UIManager`) fetched from the GitHub Releases API. Option `0` allows the user to type a tag manually; options `1`–`5` are the five most recent release tags. Pressing Enter without a selection installs the most recent release (option `1`). Example:
 
 ```
 Select a llama.cpp release to install:
@@ -269,7 +285,7 @@ Enter release tag:
 
 #### 6.3.2 Asset (zip file) selection prompt
 
-After a release tag is resolved, fetch its asset list from the GitHub API and present all available zip files as a numbered list. Auto-detect the current platform and architecture using Python's `platform` module and highlight the recommended asset. The recommended option is also the default if the user presses Enter without a selection. Example:
+After a release tag is resolved, fetch its asset list from the GitHub API and present all available zip files as a numbered list via `UIManager`. Auto-detect the current platform and architecture using Python's `platform` module and highlight the recommended asset. The recommended option is also the default if the user presses Enter without a selection. Example:
 
 ```
 Select a zip file to install:
@@ -285,7 +301,7 @@ If auto-detection fails (platform or architecture cannot be determined), no opti
 
 #### 6.3.3 Confirmation prompt
 
-After the user selects a release tag and asset, display both and prompt for confirmation before downloading anything:
+After the user selects a release tag and asset, display both via `UIManager` and prompt for confirmation before downloading anything:
 
 ```
 Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip)
@@ -303,7 +319,7 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 ### 6.5 Download & extraction
 
 - Download the selected release archive (`.zip` or `.tar.gz`) using the asset's `browser_download_url`.
-- Display a progress bar or spinner during the download so the user can track progress.
+- Display a ncurses progress bar (rendered via `UIManager`) during the download so the user can track progress.
 - **Checksum verification:** After the download completes, check whether the release provides a checksum file (e.g. `sha256sum.txt` or a similarly named asset). If one is present, download it and verify the archive before proceeding. If verification fails, delete the downloaded archive, print a clear error message, and exit with a non-zero status code.
 - If no checksum asset is available for the release, skip verification and proceed directly to extraction.
 - Decompress and extract the full archive contents — all binaries and supporting files — into the `./llama-cpp/` folder in the **same directory as the script**.
@@ -327,6 +343,7 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 - Written in Python 3.12+.
 - All logic must be encapsulated in a class (e.g. `llama_wrapper.runner.Runner`).
 - Never executed directly; always instantiated by `main.py`.
+- Any user-facing status output must be delegated to `UIManager` from `ui_manager.py`.
 
 ### 7.2 Configuration loading
 
@@ -366,27 +383,70 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 ---
 
-## 8. Non-Functional Requirements
+## 8. CLI User Interface Module (ui_manager.py)
 
-### 8.1 Cross-platform compatibility
+### 8.1 Language & structure
 
-- All Python code must run on Linux, Windows 10+, and macOS without modification.
+- Written in Python 3.12+.
+- All logic must be encapsulated in a class (e.g. `llama_wrapper.ui.UIManager`).
+- Uses Python's standard library `curses` module exclusively; no third-party terminal UI libraries are permitted.
+- Never executed directly; always instantiated by `main.py` and passed to other modules that require user interaction.
+
+### 8.2 Visual style
+
+- Background: black (`curses.COLOR_BLACK`).
+- Foreground text: green (`curses.COLOR_GREEN`).
+- All windows and panels must use this colour pair consistently.
+- Highlighted / selected items (e.g. the currently focused menu option) must be rendered in reverse video (`curses.A_REVERSE`) using the same green-on-black pair.
+
+### 8.3 Numbered menus
+
+- Render each menu inside a bordered `curses` window.
+- Display a title line, then one numbered option per row.
+- The currently highlighted option is shown in reverse video; the user navigates with the arrow keys or by typing the option number.
+- Pressing Enter confirms the selection; pressing `q` or `Esc` cancels (equivalent to the user entering `n` at a confirmation prompt).
+- A default option, where applicable, is indicated by appending `(default)` to the option label.
+
+### 8.4 Confirmation prompts
+
+- Render as a single-line prompt in a bordered window: `Proceed? [Y/n]:`.
+- `Y` / Enter confirms; `n` / `Esc` cancels.
+
+### 8.5 Progress bar
+
+- Render inside a bordered `curses` window with a title line (e.g. the filename being downloaded).
+- Display a filled bar that updates in real time as download bytes are received.
+- Show current progress as both a percentage and a `downloaded / total` byte count (human-readable, e.g. `12.4 MB / 98.0 MB`).
+- If the total size is unknown (no `Content-Length` header), display a spinner animation instead of a filled bar.
+
+### 8.6 Lifecycle
+
+- `UIManager` must initialise the `curses` environment (`curses.initscr`, colour setup, `cbreak`, `noecho`, hidden cursor) on construction and restore the terminal to its original state on destruction or on any unhandled exception, ensuring the terminal is never left in a broken state.
+
+---
+
+## 9. Non-Functional Requirements
+
+### 9.1 Cross-platform compatibility
+
+- All Python code must run on Linux and macOS without modification. Windows is supported via WSL only (see Section 5.1.1).
 - Path handling must use `pathlib.Path` throughout to avoid OS-specific separator issues.
-- Signal handling must use platform-appropriate mechanisms (`SIGTERM`/`SIGKILL` on POSIX; `TerminateProcess` on Windows).
+- Signal handling must use platform-appropriate mechanisms (`SIGTERM`/`SIGKILL` on POSIX; `TerminateProcess` on Windows/WSL).
 
-### 8.2 Dependencies
+### 9.2 Dependencies
 
 - Standard library only where possible.
 - The `requests` library (or `urllib`) may be used for GitHub API calls and file downloads.
+- The `curses` module (standard library) is used for all CLI UI rendering; no third-party terminal UI libraries are permitted.
 - No third-party dependency should be required for core start/stop/run operations.
 
-### 8.3 Error handling & exit codes
+### 9.3 Error handling & exit codes
 
 - All external calls (GitHub API, subprocess launches, file I/O) must be wrapped in `try/except` blocks.
 - Errors must be logged (according to the logging config) and result in a non-zero exit code.
 - The wrapper must never silently swallow exceptions.
 
-### 8.4 Code style
+### 9.4 Code style
 
 - Follow PEP 8 conventions.
 - Each module must include a module-level docstring describing its purpose.
@@ -394,7 +454,7 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 ---
 
-## 9. Out of Scope
+## 10. Out of Scope
 
 - Model file management (downloading, converting, or organising GGUF model files).
 - A graphical user interface.
@@ -407,6 +467,7 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.4 | April 2026 | zero4281 | Added ncurses CLI UI module (`ui_manager.py`, Section 8); all menus, prompts, and progress bars rendered with black background and green text; Windows now requires WSL with runtime detection warning; updated cross-platform and dependency requirements accordingly |
 | 1.3 | April 2026 | zero4281 | Removed `--foreground` command-line option |
 | 1.2 | April 2026 | zero4281 | Expanded Section 6 install workflow: interactive release tag + asset selection with auto-detected recommendation, all-assets display, checksum verification, download progress bar, delete-and-replace of existing llama-cpp folder, post-install success message and sanity check |
 | 1.1 | April 2026 | zero4281 | Added user confirmation and source selection for `--self-update`; added user confirmation prompt to llama.cpp install/update |

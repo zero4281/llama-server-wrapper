@@ -86,63 +86,26 @@ class Main:
             import requests
             import zipfile
             import tempfile
+            from ui_manager import UIManager
+            
+            ui = UIManager("Self-Update")
             
             # Source selection menu
-            print("\nSelect update source:")
-            print("  1) Latest release (recommended)")
-            print("  2) Previous release")
-            print("  3) Repository HEAD (main branch)")
+            source_options = [
+                {"label": "Latest release (recommended)", "description": "Most recent official release"},
+                {"label": "Previous release", "description": "Select from available releases"},
+                {"label": "Repository HEAD", "description": "Main branch latest commit"},
+            ]
             
-            choice = input("Choice [1]: ").strip()
+            default_source = 0
+            selected_source = ui.render_menu(source_options, default=default_source)
             
-            if choice == "":
-                choice = "1"
-            elif choice == "2":
-                # Fetch previous releases
-                url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases"
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                response = requests.get(url, headers=headers, timeout=30)
-                response.raise_for_status()
-                releases = response.json()
-                
-                print("\nPrevious releases:")
-                for i, rel in enumerate(releases, 1):
-                    tag = rel["tag_name"]
-                    name = rel["name"]
-                    published = rel["published_at"]
-                    print(f"  {i}. {tag} - {name} ({published})")
-                
-                choice = input("Select release [1]: ").strip()
-                if choice == "":
-                    choice = "1"
-                choice_idx = int(choice) - 1
-                if choice_idx < 0 or choice_idx >= len(releases):
-                    print("Invalid choice. Exiting.")
-                    sys.exit(0)
-                selected_release = releases[choice_idx]
-                selected_tag = selected_release["tag_name"]
-                zip_url = selected_release.get("zipball_url") or selected_release.get("zipball_url", "")
-            elif choice == "3":
-                # Download main branch HEAD
-                download_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                zip_response = requests.get(download_url, headers=headers, timeout=60)
-                zip_response.raise_for_status()
-                print("\nSelected: main branch HEAD")
-                zip_content = zip_response.content
-            else:
-                print("Invalid choice. Exiting.")
+            if selected_source == -1:
+                print("Update cancelled.")
                 sys.exit(0)
             
-            # Confirmation prompt
-            if choice == "1":
-                # Get latest release info
+            if selected_source == 0:
+                # Latest release
                 url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases/latest"
                 headers = {
                     "Accept": "application/vnd.github+json",
@@ -153,17 +116,53 @@ class Main:
                 release = response.json()
                 tag = release["tag_name"]
                 name = release["name"]
-            elif choice == "2":
-                tag = selected_tag
+                zip_url = release.get("zipball_url") or release.get("zipball_url", "")
+            elif selected_source == 1:
+                # Fetch previous releases
+                url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                response = requests.get(url, headers=headers, timeout=30)
+                response.raise_for_status()
+                releases = response.json()
+                
+                # Show previous releases menu
+                prev_releases = [
+                    {"label": rel["tag_name"], "description": f"{rel['name']} ({rel['published_at']})"}
+                    for rel in releases
+                ]
+                
+                prev_choice = ui.print_simple_menu(prev_releases)
+                if prev_choice is None:
+                    print("Update cancelled.")
+                    sys.exit(0)
+                
+                selected_release = releases[prev_choice]
+                selected_tag = selected_release["tag_name"]
                 name = selected_release["name"]
+                zip_url = selected_release.get("zipball_url") or selected_release.get("zipball_url", "")
             else:
+                # Repository HEAD
+                download_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                zip_response = requests.get(download_url, headers=headers, timeout=60)
+                zip_response.raise_for_status()
+                zip_content = zip_response.content
                 tag = "HEAD"
                 name = "main branch HEAD"
+                zip_url = download_url
             
-            print(f"\nSelected: {tag} ({name})")
-            confirm = input("Proceed with update? [Y/n]: ").strip().lower()
+            # Confirmation prompt
+            confirm = ui.render_confirmation(
+                f"Update {tag if tag != 'HEAD' else name}"
+            )
             
-            if confirm == "n" or confirm == "no":
+            if not confirm:
                 print("Update cancelled.")
                 sys.exit(0)
             
