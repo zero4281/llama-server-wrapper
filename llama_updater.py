@@ -690,6 +690,26 @@ def install_release(release: dict, release_tag: str) -> None:
     if not selected_asset:
         raise PlatformNotFoundError("No matching platform found in release")
 
+    # Show selected release info
+    asset_name = selected_asset['name']
+    print(f"\nSelected: {release_tag} ({asset_name})")
+    
+    # Confirmation prompt using UIManager
+    try:
+        from ui_manager import UIManager
+        
+        ui = UIManager("llama.cpp")
+        confirmed = ui.render_confirmation(
+            f"Release {release_tag} - {asset_name}"
+        )
+        
+        if not confirmed:
+            print("Installation cancelled.")
+            return
+    except ImportError:
+        # UIManager not available, skip confirmation
+        pass
+
     # Download
     print(f"\nDownloading {selected_asset['name']}...")
     archive_path = Path(tempfile.gettempdir()) / f"llama-{release_tag.replace('v', '')}-{selected_asset['name']}"
