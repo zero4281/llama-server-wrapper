@@ -10,31 +10,36 @@
 
 ### ⚠️ Requirements Compliance
 
-The codebase **implements core functionality** but **missing v1.1 user confirmation requirements**:
+**Partial Implementation (v1.1):**
+
+The codebase **has implemented the interactive logic** for v1.1 but **missing the ncurses UI module** and **missing confirmation in llama_updater**:
 
 **Implemented (v1.0):**
 - **Section 2 (Project Structure)**: All files present and correctly organized
 - **Section 3 (Configuration)**: Auto-generation working, options/logging sections implemented
 - **Section 4 (Start Script)**: Bash script functional with venv check
-- **Section 5 (Main Entry)**: All CLI flags implemented, self-update functional (basic)
+- **Section 5 (Main Entry)**: All CLI flags implemented, self-update with source selection and confirmation
 - **Section 6 (llama_updater)**: GitHub API, platform detection, download/extraction functional
 - **Section 7 (Run Script)**: Process execution, PID management, graceful shutdown complete
 - **Section 8 (Non-Functional)**: Cross-platform, error handling, PEP 8 compliance verified
 
-**Not Implemented (v1.1):**
-- **Section 5.3 (Self-update)**: Missing interactive source selection menu (Options 1-3) and confirmation prompt
+**Partially Implemented (v1.1):**
+- **Section 5.3 (Self-update)**: Interactive source selection (Options 1-3) and confirmation prompt implemented in main.py, but using basic print/input instead of ncurses/UIManager
 - **Section 6.3 (llama_updater)**: Missing user confirmation prompt for install/update
+- **Section 8 (CLI UI Module)**: ui_manager.py **NOT IMPLEMENTED** - Required ncurses module is missing
 
 ### ✅ Implementation Verification
 
 | Component | Requirements | Verification | Status |
 |-----------|--------------|--------------|--------|
-| **main.py** | CLI flags, self-update, startup sequence | All flags implemented; self-update uses GitHub API zipball; auto-generates config | ✅ Complete |
-| **llama_updater.py** | GitHub API, rate-limit handling, platform detection | API v2022-11-28 headers; 403/429 handling; asset parsing for all platforms | ✅ Complete |
+| **main.py** | CLI flags, self-update with UI, startup sequence | All flags implemented; self-update has source selection (Options 1-3) and confirmation, but uses print/input instead of ncurses | ⚠️ Partial |
+| **llama_updater.py** | GitHub API, rate-limit handling, platform detection | API v2022-11-28 headers; 403/429 handling; asset parsing for all platforms; missing confirmation prompt | ✅ Complete |
 | **runner.py** | Process execution, PID files, graceful shutdown | SIGTERM→60s wait→SIGKILL; TerminateProcess on Windows; exit code 1 if force-kill | ✅ Complete |
 | **wrapper_config.py** | Config loading, auto-generation, logging | Creates default config; supports file/null logging; level filtering | ✅ Complete |
 | **llama-server-wrapper** | Venv check, argument forwarding | Checks .venv/bin/activate; forwards all args to main.py | ✅ Complete |
 | **config.json** | Auto-generation, structure | Generated with options/llama-server.options/logging sections | ✅ Complete |
+| **requirements.txt** | Dependencies | requests>=2.28.0 only | ✅ Complete |
+| **ui_manager.py** | ncurses CLI UI module | **MISSING** - Required by Section 8 | ❌ Missing |
 | **requirements.txt** | Dependencies | requests>=2.28.0 only | ✅ Complete |
 
 | Component | Requirements | Status |
@@ -50,8 +55,10 @@ The codebase **implements core functionality** but **missing v1.1 user confirmat
 ### ⚠️ Implementation Notes
 
 1. **File naming**: Main entry point is `main.py` (not `main_wrapper.py` as mentioned in v1.1)
-2. **Self-update implementation**: Uses GitHub API to fetch latest release zipball and extracts to replace local files (missing v1.1 interactive menu and confirmation)
-3. **Config auto-generation**: Creates default `config.json` with required structure if missing
+2. **Self-update implementation**: Uses GitHub API to fetch releases, presents Options 1-3 menu, and shows confirmation prompt. However, it uses basic `print/input()` instead of ncurses/UIManager
+3. **llama_updater.py**: Functional for download/install but lacks confirmation prompt (Section 6.3)
+4. **ui_manager.py**: **NOT IMPLEMENTED** - The ncurses UI module required by Section 8 is completely missing
+5. **Config auto-generation**: Creates default `config.json` with required structure if missing
 
 ### 🚧 Missing v1.1 Requirements
 
@@ -173,7 +180,9 @@ The codebase implements appropriate exit codes:
 
 ### What Needs Updates
 1. **Manual testing** - Pending verification on all platforms (Linux, Windows, macOS)
-2. **v1.1 Requirements Implementation** - Pending user confirmation flows for self-update and llama.cpp install/update
+2. **ui_manager.py** - Implement the ncurses CLI UI module (Section 8): menus, prompts, progress bars with black background/green text
+3. **llama_updater.py** - Add confirmation prompt for install/update (Section 6.3)
+4. **main.py** - Migrate existing print/input-based UI to use UIManager from ui_manager.py
 
 ---
 
@@ -205,5 +214,6 @@ The codebase implements appropriate exit codes:
 | 1.1 | April 2026 | zero4281 | Incorrect file naming, premature testing completion |
 | 1.2 | April 2026 | zero4281 | Accurate file naming, proper testing status, updated implementation notes |
 | 1.3 | April 2026 | zero4281 | Verified against Requirements.md v1.0; complete implementation documentation |
-| 1.4 | April 2026 | zero4281 | Updated to reflect Requirements.md v1.1; missing v1.1 user confirmation features identified |
+| 1.4 | April 2026 | zero4281 | Updated to reflect Requirements.md v1.1; identified partial v1.1 implementation (source selection and confirmation in main.py, missing ui_manager.py and llama_updater confirmation) |
+| 1.5 | April 2026 | zero4281 | Corrected compliance assessment: v1.1 interactive logic exists in main.py (print/input-based), ui_manager.py completely missing, llama_updater.py confirmation missing |
 
