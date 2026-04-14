@@ -181,59 +181,45 @@ def stop_server() -> int:
     force_killed = False
 
     try:
-        # Wait up to 60 seconds
+        # Send SIGTERM first
+        os.kill(pid, signal.SIGTERM)
+        
+        # Wait up to 60 seconds for process to exit
         for i in range(60):
             try:
-                if sys.platform == 'win32':
-                    import ctypes
-                    import ctypes.wintypes
-                    kernel32 = ctypes.windll.kernel32
-                    exit_code = ctypes.wintypes.DWORD()
-                    result = kernel32.GetExitCodeProcess(
-                        ctypes.c_int(pid), 
-                        ctypes.byref(exit_code)
-                    )
-                    if result:
-                        print(f"Process exited with code {exit_code.value}")
-                        return 0
-                else:
-                    print("Stopping Linux Server.")
-                    try:
-                        ret = os.waitpid(pid, os.WNOHANG)
-                        if ret[0] > 0:
-                            print("Process exited cleanly")
-                            return 0
-                    except ProcessLookupError:
-                        break
-                time.sleep(1)
+                # Check if process exists (raises OSError if not)
+                os.kill(pid, 0)
             except OSError:
-                break
-        else:
-            # Process didn't exit after 60 seconds, force kill
-            print("Process did not exit cleanly, forcing termination...")
-            
-            if sys.platform == 'win32':
-                import ctypes
-                import ctypes
-                import ctypes.wintypes
-                kernel32 = ctypes.windll.kernel32
-                kernel32.TerminateProcess(ctypes.c_int(pid), 1)
-            else:
-                os.kill(pid, signal.SIGKILL)
-            
-            force_killed = True
-
-        # Remove PID file
-        if PID_FILE.exists():
-            PID_FILE.unlink()
-
-        if force_killed:
-            print("llama-server force-terminated")
-            return 1
-        else:
-            print("llama-server stopped")
+                # Process has exited
+                return 0
+            time.sleep(1)
+    except OSError as e:
+        if e.errno == signal.SIGKILL:
+            print("Process died while waiting...")
             return 0
+        raise
 
-    except Exception as e:
-        print(f"Error stopping llama-server: {e}")
-        return 2
+    # Process didn't exit after 60 seconds, force kill
+    print("Process did not exit cleanly, forcing termination...")
+    
+    if sys.platform == 'win32':
+        import ctypes
+        import ctypes.wintypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.TerminateProcess(ctypes.c_int(pid), 1)
+    else:
+        os.kill(pid, signal.SIGKILL)
+    
+    force_killed = True
+
+    # Remove PID file
+    if PID_FILE.exists():
+        PID_FILE.unlink()
+
+    if force_killed:
+        print("llama-server force-terminated")
+        return 1
+    else:
+        print("llama-server stopped")
+        return 0
+
