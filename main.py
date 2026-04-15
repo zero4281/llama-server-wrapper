@@ -104,6 +104,10 @@ class Main:
                 print("Update cancelled.")
                 sys.exit(0)
             
+            selected_zip_url = ""
+            selected_tag = ""
+            selected_name = ""
+            
             if selected_source == 0:
                 # Latest release
                 url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases/latest"
@@ -114,9 +118,9 @@ class Main:
                 response = requests.get(url, headers=headers, timeout=30)
                 response.raise_for_status()
                 release = response.json()
-                tag = release["tag_name"]
-                name = release["name"]
-                zip_url = release.get("zipball_url") or release.get("zipball_url", "")
+                selected_tag = release["tag_name"]
+                selected_name = release["name"]
+                selected_zip_url = release.get("zipball_url") or ""
             elif selected_source == 1:
                 # Fetch previous releases
                 url = "https://api.github.com/repos/zero4281/llama-server-wrapper/releases"
@@ -134,32 +138,24 @@ class Main:
                     for rel in releases
                 ]
                 
-                prev_choice = ui.print_simple_menu(prev_releases)
-                if prev_choice is None:
+                prev_choice = ui.render_menu(prev_releases)
+                if prev_choice == -1:
                     print("Update cancelled.")
                     sys.exit(0)
                 
                 selected_release = releases[prev_choice]
                 selected_tag = selected_release["tag_name"]
-                name = selected_release["name"]
-                zip_url = selected_release.get("zipball_url") or selected_release.get("zipball_url", "")
+                selected_name = selected_release["name"]
+                selected_zip_url = selected_release.get("zipball_url") or ""
             else:
                 # Repository HEAD
-                download_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                zip_response = requests.get(download_url, headers=headers, timeout=60)
-                zip_response.raise_for_status()
-                zip_content = zip_response.content
-                tag = "HEAD"
-                name = "main branch HEAD"
-                zip_url = download_url
+                selected_zip_url = "https://github.com/zero4281/llama-server-wrapper/archive/refs/heads/main.zip"
+                selected_tag = "HEAD"
+                selected_name = "main branch HEAD"
             
             # Confirmation prompt
             confirm = ui.render_confirmation(
-                f"Update {tag if tag != 'HEAD' else name}"
+                f"Update {selected_tag if selected_tag != 'HEAD' else selected_name}"
             )
             
             if not confirm:
@@ -171,16 +167,17 @@ class Main:
                 extract_path = Path(tmpdir) / "llama-server-wrapper"
                 extract_path.mkdir()
                 
-                if choice == "3":
-                    zip_ref = zipfile.ZipFile(Path(zip_content), 'r')
-                    zip_ref.extractall(extract_path)
-                else:
-                    # Get zipball URL
-                    zip_url = release.get("zipball_url", selected_release.get("zipball_url", ""))
-                    download_url = zip_url.replace("/zipball", "/archive/")
-                    zip_response = requests.get(download_url, headers=headers, timeout=60)
-                    zip_response.raise_for_status()
-                    zip_ref = zipfile.ZipFile(Path(zip_response.content), 'r')
+                # Download the zip file
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                zip_response = requests.get(selected_zip_url, headers=headers, timeout=60)
+                zip_response.raise_for_status()
+                zip_content = zip_response.content
+                
+                # Extract to temp directory
+                with zipfile.ZipFile(Path(zip_content), 'r') as zip_ref:
                     zip_ref.extractall(extract_path)
                 
                 # Copy updated files
@@ -211,26 +208,8 @@ class Main:
                 if module in sys.modules:
                     del sys.modules[module]
             
-            # Restart with same arguments
-            print(f"Restarting with original arguments: {args}")
-            
-            # Re-parse args to preserve llama_args
-            new_args = [sys.argv[0]] + list(args)
-            
-            # Clear any cached modules to force reimport
-            modules_to_clear = [
-                'main', 'runner', 'llama_updater', 'logging'
-            ]
-            for module in modules_to_clear:
-                if module in sys.modules:
-                    del sys.modules[module]
-            
-            # Execute restart using os.execv to replace current process
+            # Execute restart using subprocess
             import subprocess
-            import shlex
-            
-            # Build command to execute
-            cmd = [sys.executable] + new_args
             
             # Execute and replace current process
             subprocess.run([sys.executable] + new_args, 
