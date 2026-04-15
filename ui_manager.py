@@ -526,7 +526,7 @@ class UIManager:
             # Clear screen and move to beginning
             print("\033[2J\033[H", end="")
             
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or current/total*100:.1f}%)")
+            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
             print("Press any key to continue...", end="", flush=True)
             
             try:
@@ -602,7 +602,7 @@ class UIManager:
             bar_win.erase()
         except:
             # If anything fails, fall back to console
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or current/total*100:.1f}%)")
+            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
             input("Press Enter to continue...")
 
     def render_success(self, message: str) -> None:
