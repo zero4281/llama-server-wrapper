@@ -32,6 +32,10 @@ class UIManager:
     - Fallback to console output if curses fails
     """
 
+    # Constants
+    WIDTH = 60
+    TIMEOUT = 100
+    
     def __init__(self, title: Optional[str] = None):
         """
         Initialize the UI manager.
@@ -60,41 +64,22 @@ class UIManager:
                 
                 # Use alternate screen buffer for full-screen UI
                 curses.start_color()
-                # Set color pair: black background, green text
                 curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
                 self._color_pair = curses.color_pair(1) | curses.A_BOLD
                 
-                # Initialize colors for reverse video
                 curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Reverse video
                 
                 # Set terminal mode for interactive curses
-                # Put terminal in raw mode BEFORE any menu is created
-                curses.cbreak()
-                curses.noecho()
-                curses.curs_set(0)  # Hide cursor
-                self._screen.timeout(100)  # 100ms timeout for key refresh
+                # If cbreak fails (terminal already in raw mode), reset and retry
+                if not curses.cbreak():
+                    curses.noecho()
+                    curses.curs_set(0)  # Hide cursor
+                    self._screen.timeout(100)  # 100ms timeout for key refresh
                 
                 self._using_curses = True
-            except curses.error:
-                # If curses fails, immediately end curses and fall back to console
-                try:
-                    curses.endwin()
-                except:
-                    pass
-                # Fall through to fallback handling below
             except (curses.error, OSError, IOError) as e:
                 # If curses fails, immediately end curses and fall back to console
-                try:
-                    curses.endwin()
-                except:
-                    pass
-                # Restore terminal to normal state
-                try:
-                    curses.echo()
-                    curses.nocbreak()
-                    curses.curs_set(1)
-                except:
-                    pass
+                self._cleanup_terminal()
                 print(f"Curses initialization failed: {e}", file=sys.stderr)
                 self._using_curses = False
                 self._screen = None
@@ -102,55 +87,31 @@ class UIManager:
             
         except (curses.error, OSError, IOError) as e:
             # If curses fails, immediately end curses and fall back to console
-            try:
-                curses.endwin()
-            except:
-                pass
-            # Ensure terminal is reset to non-raw state BEFORE any console output
-            try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    # This is a tty, reset terminal attributes
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
-            except:
-                pass
-            # Also try curses methods as fallback
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+            self._cleanup_terminal()
             print(f"Curses initialization failed: {e}", file=sys.stderr)
             self._using_curses = False
             self._screen = None
             self._color_pair = None
-            # The methods will use console output
 
-    def __del__(self):
-        """Cleanup curses resources."""
-        self._close()
-
-    def _close(self):
-        """Close curses and restore terminal."""
+    def _cleanup_terminal(self):
+        """Clean up curses and restore terminal."""
         if self._using_curses and self._screen:
             try:
-                # Restore terminal settings
                 curses.echo()
                 curses.nocbreak()
                 curses.keypad(False)
                 curses.curs_set(1)  # Show cursor
-                
-                # End curses
                 curses.endwin()
             except:
                 pass
             finally:
-                # Ensure screen is None to prevent double cleanup
                 self._screen = None
+                self._color_pair = None
+                self._using_curses = False
+
+    def __del__(self):
+        """Cleanup curses resources."""
+        self._cleanup_terminal()
 
     def refresh(self):
         """Refresh screen."""
@@ -158,9 +119,8 @@ class UIManager:
             try:
                 self._screen.refresh()
             except:
-                # If refresh fails, try to restore terminal
                 try:
-                    self._close()
+                    self._cleanup_terminal()
                 except:
                     pass
 
@@ -175,7 +135,7 @@ class UIManager:
     def print_header(self, text: str):
         """Print header with color."""
         if not self._using_curses:
-            print(f"\n{'='*60}\n{text.center(60)}\n{'='*60}")
+            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
             return
             
         if not self._screen:
@@ -183,12 +143,11 @@ class UIManager:
             
         try:
             self._screen.attron(self._color_pair)
-            self._screen.addstr(0, 0, text.ljust(60))
+            self._screen.addstr(0, 0, text.ljust(self.WIDTH))
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
         except:
-            # Fallback to console
-            print(f"\n{'='*60}\n{text.center(60)}\n{'='*60}")
+            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
 
     def print_message(self, text: str, y: int = 1, x: int = 1):
         """Print message at specific position with color."""
@@ -205,7 +164,6 @@ class UIManager:
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
         except:
-            # Fallback to console
             print(text)
 
     def print_line(self, y: int, x: int = 0, length: int = None):
@@ -224,10 +182,9 @@ class UIManager:
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
         except:
-            # Fallback to console
             print("-" * (length or 60))
 
-    def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> curses.window:
+    def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> Optional[curses.window]:
         """
         Create a bordered window.
         
@@ -257,54 +214,6 @@ class UIManager:
         except:
             return None
 
-    def _put_in_raw_mode(self):
-        """Put terminal into raw mode."""
-        if self._using_curses and self._screen:
-            try:
-                # Put terminal in raw mode
-                curses.cbreak()
-                curses.noecho()
-                curses.curs_set(0)
-                curses.keypad(True)
-            except curses.error:
-                # If we can't put terminal in raw mode, it might already be in raw mode
-                # or there's an issue. Try to restore terminal.
-                self._restore_terminal()
-                return False
-            except:
-                # If we can't put terminal in raw mode, fall back to console
-                self._restore_terminal()
-                return False
-            return True
-        return False
-
-    def _restore_terminal(self):
-        """Restore terminal to normal state."""
-        if self._using_curses and self._screen:
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.keypad(False)
-                curses.curs_set(1)
-                curses.endwin()
-            except:
-                pass
-            finally:
-                self._screen = None
-                self._color_pair = None
-                self._using_curses = False
-
-    def _ensure_raw_mode(self):
-        """Ensure terminal is in raw mode before menu."""
-        if not self._using_curses:
-            # Terminal is not in curses mode, so we're fine
-            return True
-        
-        # Terminal is already in curses mode, so it should be in raw mode
-        return True
-
-
-
     def render_menu(self, options: List[Dict[str, Any]], 
                    default: Optional[int] = None,
                    highlighted: Optional[int] = None) -> int:
@@ -319,43 +228,44 @@ class UIManager:
         Returns:
             Selected option index, or -1 if cancelled
         """
-        # Put terminal into raw mode BEFORE creating menu
-        self._put_in_raw_mode()
-        
+        # Clear screen and setup curses if needed
         if not self._using_curses:
-            # Fallback to console
-            # Ensure terminal is reset to non-raw state BEFORE printing menu
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    # This is a tty, reset terminal attributes
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            # Also try curses methods as fallback
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen
+            print("\033[2J\033[H", end="")
             
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 label = opt.get('label', '')
                 desc = opt.get('description', '')
                 full_label = f"  {i}. {label}{marker}"
-                print(f"{full_label}")
+                print(full_label)
                 if desc:
                     print(f"     {desc}")
             
-            # Use sys.stdin.readline() instead of input() for better compatibility
+            # Print prompt and wait for input with timeout
+            print(f"Choice [{highlighted if highlighted is not None else 0}]: ", end="", flush=True)
             try:
-                choice_str = sys.stdin.readline().strip()
+                # Use select to timeout after 2 seconds for responsiveness
+                import select
+                import sys
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
+                    if ready:
+                        choice_str = sys.stdin.readline().strip()
+                    else:
+                        choice_str = ""
+                else:
+                    choice_str = sys.stdin.readline().strip()
             except:
                 choice_str = ""
             
@@ -438,7 +348,6 @@ class UIManager:
 
             # Input handling
             while True:
-                # Use getch with timeout to allow for processing
                 try:
                     key = menu_win.getch(timeout=100)
                 except:
@@ -498,32 +407,36 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled
         """
+        # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
-            # Fallback to console
-            # Ensure terminal is reset to non-raw state BEFORE printing confirmation
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    # This is a tty, reset terminal attributes
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            # Also try curses methods as fallback
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             print(f"\n{message}")
-            # Use sys.stdin.readline() instead of input() for better compatibility
+            print("Proceed? [Y/n]: ", end="", flush=True)
+            
             try:
-                response = sys.stdin.readline().strip().lower()
+                # Use select to timeout after 2 seconds for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
+                    if ready:
+                        response = sys.stdin.readline().strip().lower()
+                    else:
+                        # No input in 2 seconds - assume default
+                        response = ""
+                else:
+                    response = sys.stdin.readline().strip().lower()
             except:
                 response = ""
             
@@ -532,7 +445,7 @@ class UIManager:
             return False
 
         if not self._screen:
-            return default  # Return default if no screen
+            return default
 
         height, width = self._screen.getmaxyx()
         
@@ -569,7 +482,7 @@ class UIManager:
                 if key == 27 or key == curses.KEY_RESIZE:
                     # Cancel
                     self._screen.erase()
-                    return not default  # Return inverse of default (no = False)
+                    return False
                 
                 elif key == 10 or key == curses.KEY_ENTER:  # Enter
                     # Confirm (default yes)
@@ -602,33 +515,35 @@ class UIManager:
             percent: Optional pre-calculated percentage
         """
         if not self._using_curses:
-            # Fallback to console
-            # Ensure terminal is reset to non-raw state BEFORE printing
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    # This is a tty, reset terminal attributes
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            # Also try curses methods as fallback
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or current/total*100:.1f}%)")
-            # Use sys.stdin.readline() instead of input() for better compatibility
+            print("Press any key to continue...", end="", flush=True)
+            
             try:
-                input("Press Enter to continue...")
-            except EOFError:
-                pass  # Handle EOF gracefully
+                # Use select to timeout after 1 second for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+                    if ready:
+                        # Consume input but don't block
+                        sys.stdin.readline()
+                    # else: timeout - just continue
+                else:
+                    sys.stdin.readline()
+            except:
+                pass
             return
 
         if not self._screen:
@@ -693,28 +608,30 @@ class UIManager:
     def render_success(self, message: str) -> None:
         """Render success message."""
         if not self._using_curses:
-            # Ensure terminal is reset to non-raw state BEFORE printing
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
+            print("Press any key to continue...", end="", flush=True)
+            
             try:
-                input("Press Enter to continue...")
-            except EOFError:
+                # Use select to timeout after 1 second for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+                    if ready:
+                        sys.stdin.readline()
+            except:
                 pass
             return
 
@@ -759,28 +676,30 @@ class UIManager:
     def render_error(self, message: str) -> None:
         """Render error message."""
         if not self._using_curses:
-            # Ensure terminal is reset to non-raw state BEFORE printing
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
+            print("Press any key to continue...", end="", flush=True)
+            
             try:
-                input("Press Enter to continue...")
-            except EOFError:
+                # Use select to timeout after 1 second for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+                    if ready:
+                        sys.stdin.readline()
+            except:
                 pass
             return
 
@@ -806,9 +725,9 @@ class UIManager:
             msg_win.attroff(curses.A_REVERSE | curses.A_BOLD)
             
             # Message
-            msg_win.attron(curses.color_pair(1))  # Green on black
+            msg_win.attron(self._color_pair)
             msg_win.addstr(2, 2, message)
-            msg_win.attroff(curses.color_pair(1))
+            msg_win.attroff(self._color_pair)
             
             msg_win.addstr(3, 2, "Press any key to continue...", curses.A_REVERSE)
             msg_win.refresh()
@@ -837,19 +756,8 @@ class UIManager:
             Selected index, or None if cancelled
         """
         if not self._using_curses:
-            # Fallback to console
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-
-        if not self._screen:
-            # Fallback to console
+            # Ensure terminal is reset before printing
+            self._cleanup_terminal()
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
@@ -931,51 +839,31 @@ class UIManager:
     def get_input(self, prompt: str) -> str:
         """Get user input with confirmation styling."""
         if not self._using_curses:
-            # Ensure terminal is reset to non-raw state BEFORE getting input
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             try:
-                return input(f"{prompt}: ").strip()
-            except EOFError:
-                return ""
-
-        if not self._screen:
-            # Ensure terminal is reset to non-raw state BEFORE getting input
-            import sys
-            try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Use select to timeout after 2 seconds for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
+                    if ready:
+                        return sys.stdin.readline().strip()
+                    else:
+                        return ""
+                else:
+                    return sys.stdin.readline().strip()
             except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
-            
-            try:
-                return input(f"{prompt}: ").strip()
-            except EOFError:
                 return ""
 
         height, width = self._screen.getmaxyx()
@@ -995,58 +883,36 @@ class UIManager:
                           default: Optional[int] = None) -> Optional[int]:
         """Get numbered input from user."""
         if not self._using_curses:
-            # Ensure terminal is reset to non-raw state BEFORE printing
-            import sys
+            # Use console fallback with proper terminal reset
+            import subprocess
             try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
+                # Reset terminal to cooked mode
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+                pass  # Ignore stty errors
+            
+            # Clear screen and move to beginning
+            print("\033[2J\033[H", end="")
             
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
-            try:
-                choice = input(f"Choice [{default if default is not None else 0}]: ").strip()
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except (ValueError, EOFError):
-                return None
-
-        if not self._screen:
-            # Ensure terminal is reset to non-raw state BEFORE printing
-            import sys
-            try:
-                import termios
-                import fcntl
-                fd = sys.stdin.fileno()
-                tty = fcntl.ioctl(fd, termios.TIOCGWINSZ, None) is not None
-                if tty:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, termios.tcgetattr(fd))
-            except:
-                pass
-            try:
-                curses.echo()
-                curses.nocbreak()
-                curses.curs_set(1)
-            except:
-                pass
+            print(f"Choice [{default if default is not None else 0}]: ", end="", flush=True)
             
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
             try:
-                choice = input(f"Choice [{default if default is not None else 0}]: ").strip()
+                # Use select to timeout after 2 seconds for responsiveness
+                import select
+                
+                if sys.stdin.isatty():
+                    # Read with timeout
+                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
+                    if ready:
+                        choice = sys.stdin.readline().strip()
+                    else:
+                        choice = ""
+                else:
+                    choice = sys.stdin.readline().strip()
+                
                 idx = int(choice)
                 return idx if 0 <= idx < len(options) else None
             except (ValueError, EOFError):
