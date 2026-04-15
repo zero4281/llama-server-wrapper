@@ -2,6 +2,14 @@
 
 This folder contains unit tests for the `ui_manager.py` ncurses CLI user interface module.
 
+## Entry Point
+
+The tests are orchestrated through **`__init__.py`**, which serves as the entry point. It imports and runs all test modules in the `Tests/` directory.
+
+**Run:** `python Tests/__init__.py`
+
+## Test Files
+
 ## Test Files
 
 ### `test_ui_manager_api.py`

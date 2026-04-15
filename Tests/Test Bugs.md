@@ -8,106 +8,152 @@
 
 ## Executive Summary
 
-The test suite contains **4 distinct bugs**: 2 in `ui_manager.py` (code being tested) and 2 in the test files themselves. The errors occur across all three test runners:
+The test suite contains **4 bugs**: 1 in `ui_manager.py` (production code) and 3 in the test files. These cause test failures across all runners:
 
-| Bug Location | Type | Severity | Frequency |
-|--------------|------|----------|----------|
-| `ui_manager.py:393` | Logic Error | High | All tests |
-| `ui_manager.py:605` | Division by Zero | Medium | When fallback triggered with total=0 |
-| `Tests/test_ui_manager_pytest.py:84,105,160,229` | Test Bug | Low | 4 tests |
+| Bug Location | Type | Severity | Impact |
+|--------------|------|----------|--------|
+| `ui_manager.py:297-348` | Logic Error | High | `render_menu()` always returns -1 (cancel) |
+| `Tests/test_ui_manager_pytest.py:84,105,160,229` | Test Error | Medium | 4 tests fail with AttributeError |
+| `Tests/test_ui_manager_comprehensive.py:137` | Test Failure | Medium | Assertion error due to Bug 1 |
 
 ---
 
 ## Detailed Analysis
 
-### Bug 1: Undefined `_draw_menu` in Curses Path (ui_manager.py:393)
+### Bug 1: Undefined `_draw_menu` Helper Function (ui_manager.py)
 
-**Location:** `ui_manager.py`, line 393  
+**Location:** `ui_manager.py`, lines 297-348  
 **Severity:** High  
-**Type:** Logic Error / Undefined Behavior
+**Type:** Scope Error / Logic Error
 
 **Description:**
-The `_draw_menu()` helper function is defined inside the `if not self._using_curses:` block (lines 297-344), making it only available when curses is NOT being used. However, at line 393, the curses code path (when `self._using_curses` is True) calls `_draw_menu(highlighted_idx)` without defining it in that scope.
+The `_draw_menu()` helper function is defined inside the `if not self._using_curses:` block at lines 234-277 (inside the console fallback code), making it only available when curses is NOT being used. However, at line 348, the curses code path (when `self._using_curses` is True) calls `_draw_menu(highlighted_idx)`, causing a `NameError` exception at line 395.
 
-**Code Flow:**
+**Evidence from Test Run:**
 ```
-Line 278-398: curses path (self._using_curses is True)
-  └─ Line 393: _draw_menu(highlighted_idx)  ← NameError raised
-  └─ Line 395: bare except catches NameError
-  └─ Line 397: returns -1 (cancel/error)
+[2/6] Testing Menu Navigation...
+ERROR: Should return selected index, got -1
+AssertionError: Should return selected index, got -1
 ```
+
+**Root Cause:**
+Line 297 places `_draw_menu` inside the wrong conditional block:
+```python
+for i, opt in enumerate(options):
+    marker = " (default)" if default is not None and i == default else ""
+    label = opt.get('label', '')
+    desc = opt.get('description', '')
+    full_label = f"  {i}. {label}{marker}"
+    print(full_label)
+    if desc:
+        print(f"     {desc}")
+
+# Print prompt and wait for input with timeout
+print(f"Choice [{highlighted if highlighted is not None else 0}]: ", end="", flush=True)
+try:
+    # ... select logic ...
+except:
+    choice_str = ""
+
+try:
+    idx = int(choice_str)
+    return idx if 0 <= idx < len(options) else -1
+except ValueError:
+    return -1
+
+if not self._screen:
+    return -1
+
+# Clear screen before displaying menu
+self._screen.erase()
+```
+
+The `_draw_menu` function at line 297 is incorrectly indented inside the fallback console block, not at the module level or in the curses section.
 
 **Impact:**
-When `render_menu()` is called with curses enabled, it raises `NameError: name '_draw_menu' is not defined`, which is caught by the bare `except:` block and returns -1 (cancel).
-
-**Evidence:**
-- `test_ui_manager_comprehensive.py` line 137: `AssertionError: Should return selected index, got -1`
-- `test_ui_manager_pytest.py` tests that reach line 393 would fail similarly
+When `render_menu()` is called with curses enabled, it immediately hits the exception at line 395 (`NameError`), catches it with the bare `except:`, and returns -1 (cancel). This causes all menu navigation tests to fail.
 
 **Fix Required:**
-Move `_draw_menu()` outside the `if not self._using_curses:` block, or implement the curses rendering path properly.
+Move the `_draw_menu()` function definition outside the `if not self._using_curses:` block (around line 297), or implement the curses drawing logic inline in the curses path.
 
 ---
 
-### Bug 2: Division by Zero in Progress Bar Fallback (ui_manager.py:605)
+### Bug 2: Test Assertions Failing Due to Bug 1 (test_ui_manager_comprehensive.py)
 
-**Location:** `ui_manager.py`, line 605  
+**Location:** `Tests/test_ui_manager_comprehensive.py`, line 137  
 **Severity:** Medium  
-**Type:** Arithmetic Error / Race Condition
-
-**Description:**
-In `render_progress_bar()`, when the curses code fails and falls back to console output, line 605 calculates `percent or current/total*100`. When `total=0` (unknown size), this causes a `ZeroDivisionError`.
-
-**Code Flow:**
-```
-Line 587-606: curses rendering
-  └─ Line 603: bare except catches _curses.error ("must call initscr() first")
-  └─ Line 605: print(f"... ({percent or current/total*100:.1f}%)")  ← ZeroDivisionError
-  └─ Line 606: exception caught by outer try-except
-  └─ Line 606: falls back to console with same calculation
-```
-
-**Impact:**
-When mocked curses fails (as in `test_ui_manager_pytest.py::test_progress_bar_spinner`), the fallback code at line 605 executes `current/total*100` where `total=0`, causing a `ZeroDivisionError`.
+**Type:** Test Failure (Symptom)
 
 **Evidence:**
-- `test_ui_manager_pytest.py` line 210: `test_progress_bar_spinner` fails with `ZeroDivisionError: division by zero`
+```python
+assert result == 2, f"Should return selected index, got {result}"
+AssertionError: Should return selected index, got -1
+```
 
-**Fix Required:**
-Add a guard clause before the calculation: `percent or 0 if total > 0 else 0` or handle the `total=0` case explicitly.
+**Explanation:**
+This test failure is a direct symptom of Bug 1. When `render_menu()` is called with curses enabled, it immediately returns -1 due to the exception, causing the assertion to fail.
 
 ---
 
 ### Bug 3: References to Non-existent `_draw_menu` Method (Tests/test_ui_manager_pytest.py)
 
 **Location:** `Tests/test_ui_manager_pytest.py`, lines 84, 105, 160, 229  
-**Severity:** Low  
-**Type:** Test Bug / Mocking Error
+**Severity:** Medium  
+**Type:** Test Error / Mocking Error
 
 **Description:**
 Four test methods in `test_ui_manager_pytest.py` attempt to patch `ui_manager.UIManager._draw_menu`, a method that does not exist in the `UIManager` class.
 
-**Affected Tests:**
-1. `test_menu_navigation_arrows` (line 84)
-2. `test_menu_typing_selection` (line 105)
-3. `test_confirmation_n_cancels` (line 160)
-4. `test_full_workflow_simulation` (line 229)
+**Evidence from Test Run:**
+```
+Tests/test_ui_manager_pytest.py::TestUIManagerPytest::test_menu_navigation_arrows FAILED
+AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'
+
+Tests/test_ui_manager_pytest.py::TestUIManagerPytest::test_menu_typing_selection FAILED
+AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'
+
+Tests/test_ui_manager_pytest.py::TestUIManagerPytest::test_confirmation_n_cancels FAILED
+AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'
+
+Tests/test_ui_manager_pytest.py::TestUIManagerPytest::test_full_workflow_simulation FAILED
+AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'
+```
 
 **Code:**
 ```python
-with patch('ui_manager.UIManager._draw_menu') as mock_draw_menu:
+with patch('ui_manager.UIManager._draw_menu'):
     ...
 ```
 
 **Impact:**
-The `patch()` call raises `AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'`, causing these tests to fail immediately without exercising the actual code paths.
-
-**Evidence:**
-- `test_ui_manager_pytest.py` line 84: `AttributeError: <class 'ui_manager.UIManager'> does not have the attribute '_draw_menu'`
-- Same error at lines 105, 160, 229
+The `patch()` call raises `AttributeError` before the tests can execute, causing immediate failure without exercising the actual code paths.
 
 **Fix Required:**
-Remove the `patch('ui_manager.UIManager._draw_menu')` lines or replace with appropriate mocks for the actual methods being tested.
+Remove the `patch('ui_manager.UIManager._draw_menu')` lines from the four failing tests.
+
+---
+
+### Bug 4: Division by Zero Risk in Progress Bar Fallback (ui_manager.py:605)
+
+**Location:** `ui_manager.py`, line 605  
+**Severity:** Low  
+**Type:** Arithmetic Error / Potential Crash
+
+**Description:**
+In `render_progress_bar()`, when the curses code fails and falls back to console output, line 605 calculates `percent or current/total*100`. When `total=0` and `percent` is falsy (None or 0), this causes a `ZeroDivisionError`.
+
+**Current Code:**
+```python
+except:
+    # If anything fails, fall back to console
+    print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
+    input("Press Enter to continue...")
+```
+
+**Note:** The expression `if total` prevents the division, but the logic is inconsistent. The check `if total` is correct and prevents division by zero, but the code should be reviewed for clarity. If `total=0` is expected for indeterminate progress, the calculation should be handled explicitly.
+
+**Fix Required:**
+The ternary expression is correct and prevents division by zero, but the code should be reviewed for clarity. If `total=0` is expected for indeterminate progress, the calculation should be handled explicitly.
 
 ---
 
@@ -115,9 +161,9 @@ Remove the `patch('ui_manager.UIManager._draw_menu')` lines or replace with appr
 
 ### Why These Bugs Occurred
 
-1. **Partial Implementation**: The `ui_manager.py` file appears to be a work-in-progress. The `_draw_menu` helper was likely copied from the fallback code block but never moved to the curses code path, or the curses path was never fully implemented.
+1. **Copy-Paste Error**: The `_draw_menu` function was likely copied from the console fallback code block but the indentation was incorrect, placing it inside the fallback block instead of at the module level or in the curses section.
 
-2. **Inconsistent Error Handling**: The bare `except:` blocks at lines 395 and 603 catch all exceptions, but the fallback code at line 605 performs calculations that can fail, creating a race condition between curses failure and fallback execution.
+2. **Incomplete Implementation**: The `render_menu()` method has console fallback code (lines 234-277) but the curses implementation (lines 278+) was never fully tested or completed. The `_draw_menu` helper was never actually used in the curses path.
 
 3. **Test-Assisted Regression**: The `test_ui_manager_pytest.py` file appears to have been written with assumptions about the API that no longer match the current implementation, suggesting the tests were written against a different version of the code.
 
@@ -128,37 +174,32 @@ Remove the `patch('ui_manager.UIManager._draw_menu')` lines or replace with appr
 ### Immediate Fixes (Priority: High)
 
 1. **Fix `_draw_menu` scoping** (`ui_manager.py`):
-   - Move the `_draw_menu()` function outside the `if not self._using_curses:` block (around line 277)
-   - OR implement the curses rendering logic in the curses path (lines 278+)
-   - OR delete the reference to `_draw_menu` at line 393 and implement proper curses drawing
+   - Remove the `_draw_menu` function at line 297 (it's inside the wrong block)
+   - Implement the curses drawing logic inline in the curses path, or
+   - Move `_draw_menu` outside all conditional blocks (around line 297)
 
-2. **Fix division by zero** (`ui_manager.py:605`):
-   - Change: `percent or current/total*100` → `percent or (current/total*100 if total > 0 else 0)`
-   - OR handle the `total=0` case earlier in the method with an early return
+2. **Fix test mocking** (`Tests/test_ui_manager_pytest.py`):
+   - Remove `patch('ui_manager.UIManager._draw_menu')` from the four failing tests (lines 84, 105, 160, 229)
+   - Verify the tests are testing the correct behavior
 
-3. **Fix test mocking** (`Tests/test_ui_manager_pytest.py`):
-   - Remove `patch('ui_manager.UIManager._draw_menu')` from the four failing tests
-   - OR verify the tests are testing the correct behavior and fix the mocking strategy
+---
 
-### Verification Steps
+## Test Summary
 
-After fixes are applied, run:
-```bash
-python Tests/__init__.py
-python -m pytest Tests/test_ui_manager_pytest.py -v
-```
-
-All tests should pass without exceptions or assertion errors.
+- **test_ui_manager_api.py**: All 5 tests passed (API verification only)
+- **test_ui_manager_comprehensive.py**: 1 test failed (menu navigation due to Bug 1)
+- **test_ui_manager_pytest.py**: 4 tests failed (mocking errors), 6 tests passed
 
 ---
 
 ## Files Modified (Not Yet)
 
-- `ui_manager.py` (2 bugs)
-- `Tests/test_ui_manager_pytest.py` (4 test bugs)
+- `ui_manager.py` (1 bug - scope error)
+- `Tests/test_ui_manager_pytest.py` (4 test bugs - incorrect mocking)
+- `Tests/test_ui_manager_comprehensive.py` (1 test failure - symptom of Bug 1)
 
 ---
 
 ## Conclusion
 
-The test suite exposes **2 bugs in the production code** and **2 bugs in the tests**. The production code bugs prevent `render_menu()` from functioning correctly when curses is enabled, and create a division-by-zero risk in edge cases. The test bugs prevent pytest from running certain test cases. All issues are straightforward to fix and do not indicate architectural problems.
+The test suite exposes **1 bug in the production code** (undefined `_draw_menu` causing menu navigation to fail immediately) and **3 bugs in the tests** (incorrect patching attempts and assertion failures). The production code bug prevents `render_menu()` from functioning correctly when curses is enabled, causing all menu tests to fail. The test bugs prevent pytest from running certain test cases. All issues are straightforward to fix.
