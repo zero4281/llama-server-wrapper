@@ -248,12 +248,40 @@ class Main:
         
         if self.args.install_llama:
             print("\n[Install llama.cpp]\n")
-            LlamaUpdater().install()
+            try:
+                LlamaUpdater().install()
+            except SystemExit:
+                raise
+            except Exception as e:
+                # Re-raise if it's a known updater error
+                from llama_updater import (RateLimitError, GitHubAPIError, 
+                                          DownloadError, ExtractionError, 
+                                          PlatformNotFoundError, LlamaUpdaterError)
+                if isinstance(e, (RateLimitError, GitHubAPIError, 
+                                 DownloadError, ExtractionError, 
+                                 PlatformNotFoundError, LlamaUpdaterError)):
+                    raise
+                print(f"Error: {e}")
+                sys.exit(1)
             return
         
         if self.args.update_llama:
             print("\n[Update llama.cpp]\n")
-            LlamaUpdater().update()
+            try:
+                LlamaUpdater().update()
+            except SystemExit:
+                raise
+            except Exception as e:
+                # Re-raise if it's a known updater error
+                from llama_updater import (RateLimitError, GitHubAPIError, 
+                                          DownloadError, ExtractionError, 
+                                          PlatformNotFoundError, LlamaUpdaterError)
+                if isinstance(e, (RateLimitError, GitHubAPIError, 
+                                 DownloadError, ExtractionError, 
+                                 PlatformNotFoundError, LlamaUpdaterError)):
+                    raise
+                print(f"Error: {e}")
+                sys.exit(1)
             return
         
         if self.args.stop_server:

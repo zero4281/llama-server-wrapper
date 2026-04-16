@@ -35,6 +35,8 @@ class UIManager:
     # Constants
     WIDTH = 60
     TIMEOUT = 100
+    MIN_WIDTH_PERCENT = 0.6
+    MIN_HEIGHT_PERCENT = 0.5
     
     def __init__(self, title: Optional[str] = None):
         """
@@ -77,6 +79,7 @@ class UIManager:
             try:
                 curses.reset_prog_mode()
                 curses.reset_pair_matrix()
+                import subprocess
                 subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
                 pass
@@ -149,6 +152,12 @@ class UIManager:
             except:
                 pass
 
+    def _get_white_attr(self):
+        """Get the white attribute for use when curses is initialized."""
+        if self._using_curses and self._color_pair is not None:
+            return curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE
+        return None
+    
     def print_header(self, text: str):
         """Print header with color."""
         if not self._using_curses:
@@ -292,21 +301,29 @@ class UIManager:
         self._screen.refresh()  # Force full screen refresh to clear old content
         screen_height, screen_width = self._screen.getmaxyx()
         menu_height = len(options) + 4
-        # Calculate menu width: max label length + padding, but ensure it fits on screen
+        # Calculate menu width: max label length + padding, but ensure minimum percentage and fit on screen
         max_label_len = max(len(opt.get('label', '')) for opt in options) if options else 20
-        menu_width = min(max_label_len + 10, screen_width - 8) + 2
+        min_width = int(screen_width * self.MIN_WIDTH_PERCENT)
+        menu_width = max(min_width, min(max_label_len + 15, screen_width - 8)) + 2
         
         y_offset = 2
         x_offset = 2
         highlighted_idx = highlighted if highlighted is not None else 0
         
+        # Calculate centered position
+        y_center = max(2, (screen_height - menu_height) // 2)
+        x_center = max(2, (screen_width - menu_width) // 2)
+        
         # Define redraw function
         def redraw(win, hi_idx):
             try:
                 win.erase()
-                title = f"Select {self._title.lower()}"
-                win.addstr(0, 1, title.center(menu_width - 2))
-                win.addstr(1, 0, "-" * (menu_width - 2))
+                white_attr = self._get_white_attr()
+                if white_attr is not None:
+                    win.attron(white_attr)
+                    win.addstr(0, 1, f"Select {self._title.lower()}".center(menu_width - 2))
+                    win.attroff(white_attr)
+                    win.addstr(1, 0, "-" * (menu_width - 2))
                 for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
@@ -327,16 +344,12 @@ class UIManager:
                 footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
                 truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
                 win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
-                if hi_idx is not None and hi_idx >= 0:
-                    win.attron(self._color_pair | curses.A_BOLD)
-                    win.addstr(menu_height - 2, 0, f"Choice [{hi_idx}]:")
-                    win.attroff(self._color_pair | curses.A_BOLD)
                 win.refresh()
             except curses.error:
                 self._screen.refresh()
 
         try:
-            menu_win = curses.newwin(menu_height, menu_width, y_offset, x_offset)
+            menu_win = curses.newwin(menu_height, menu_width, y_center, x_center)
             menu_win.box()
             menu_win.keypad(True)
             
@@ -366,6 +379,7 @@ class UIManager:
                     # Cancel
                     try:
                         self._screen.erase()
+                        self._screen.refresh()
                     except:
                         pass
                     return -1
@@ -397,10 +411,12 @@ class UIManager:
                 
                 elif key == 10 or key == curses.KEY_ENTER:
                     # Confirm
+                    self._screen.refresh()
                     return highlighted_idx
                 
                 elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
                     # Backspace - cancel
+                    self._screen.refresh()
                     return -1
                 
                 # Timeout - redraw to refresh display
@@ -409,6 +425,9 @@ class UIManager:
                 
                 # Redraw menu
                 redraw(menu_win, highlighted_idx)
+                
+                # Small delay to prevent rapid redraws
+                curses.napms(10) if hasattr(curses, 'napms') else None
                 
         except curses.error:
             # Clear screen and fall back to console
@@ -489,27 +508,38 @@ class UIManager:
         self._screen.erase()
         self._screen.move(0, 0)
         
+        # Create window at bottom of screen
+        msg_width = min(width - 4, max(width * self.MIN_WIDTH_PERCENT, 60))
+        y_start = max(2, height - 6)
+        x_start = max(2, (width - msg_width) // 2)
+        
         # Create window
         try:
-            prompt_win = curses.newwin(4, width - 4, 1, 2)
+            prompt_win = curses.newwin(4, msg_width, y_start, x_start)
             prompt_win.box()
             prompt_win.keypad(True)
             
             # Title
-            prompt_win.attron(self._color_pair)
-            prompt_win.addstr(0, 1, "Confirm".center(width - 4))
-            prompt_win.attroff(self._color_pair)
-            prompt_win.addstr(1, 0, "-" * (width - 6))
+            title = "Confirm"
+            white_attr = self._get_white_attr()
+            if white_attr is not None:
+                prompt_win.attron(white_attr)
+                prompt_win.addstr(0, 1, title.center(msg_width - 2))
+                prompt_win.attroff(white_attr)
+            prompt_win.addstr(1, 0, "-" * (msg_width - 2))
             
             # Message
-            prompt_win.attron(self._color_pair)
-            prompt_win.addstr(2, 2, message)
-            prompt_win.attroff(self._color_pair)
+            white_attr = self._get_white_attr()
+            if white_attr is not None:
+                prompt_win.attron(white_attr)
+                truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
+                prompt_win.addstr(2, 0, truncated_msg)
+                prompt_win.attroff(white_attr)
             
             # Prompt
             prompt_str = "Proceed? [Y/n]: "
             prompt_win.attron(curses.A_REVERSE | curses.A_BOLD)
-            prompt_win.addstr(3, 2, prompt_str)
+            prompt_win.addstr(3, 1, prompt_str)
             prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
             
             prompt_win.refresh()
@@ -517,7 +547,7 @@ class UIManager:
 
             # Input handling
             while True:
-                self.refresh()
+                self._screen.refresh()
                 
                 key = prompt_win.getch()
                 
@@ -529,17 +559,31 @@ class UIManager:
                 elif key == 10 or key == curses.KEY_ENTER:  # Enter
                     # Confirm (default yes)
                     self._screen.erase()
+                    self._screen.refresh()
                     return True
                 
                 elif key == ord('y') or key == ord('Y'):
                     # Confirm
                     self._screen.erase()
+                    self._screen.refresh()
                     return True
                 
                 elif key == ord('n') or key == ord('N'):
                     # Cancel
                     self._screen.erase()
+                    self._screen.refresh()
                     return False
+                
+                elif key >= 0 and key < 127:  # Regular character input
+                    # Handle character input (e.g., typing 'y' or 'n')
+                    self._screen.erase()
+                    self._screen.refresh()
+                    return True
+                
+                # Timeout - assume default (yes)
+                self._screen.erase()
+                self._screen.refresh()
+                return True
 
         except curses.error:
             # If curses fails during input, clean up and return

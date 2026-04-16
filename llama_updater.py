@@ -43,7 +43,9 @@ class RateLimitError(LlamaUpdaterError):
 
 class GitHubAPIError(LlamaUpdaterError):
     """Raised when GitHub API is unreachable."""
-    pass
+    def __init__(self, message: str, reset_time: str = 'unknown'):
+        self.reset_time = reset_time
+        super().__init__(f"GitHub API error: {message}")
 
 
 class DownloadError(LlamaUpdaterError):
@@ -127,23 +129,38 @@ def _get_release_info(url: str) -> dict:
         response = requests.get(url, headers=_get_api_headers(), timeout=30)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.HTTPError as e:
         if hasattr(e, 'response') and e.response is not None:
-            if e.response.status_code == 429:
-                # Rate limited
-                reset_time = e.response.headers.get('X-RateLimit-Reset')
-                reset_ts = int(reset_time) if reset_time else None
-                if reset_ts:
-                    import datetime
-                    reset_dt = datetime.datetime.utcfromtimestamp(reset_ts)
-                    reset_time = reset_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
-                else:
-                    reset_time = 'unknown'
-                raise RateLimitError(reset_time)
-            elif e.response.status_code == 403:
-                raise GitHubAPIError(f"GitHub API forbidden (403). Check your network connection.")
+            status_code = e.response.status_code
+            # Check for rate limit headers in 403/429 responses
+            reset_header = e.response.headers.get('X-RateLimit-Reset')
+            reset_ts = int(reset_header) if reset_header else None
+            reset_dt = None
+            if reset_ts:
+                reset_dt = datetime.datetime.utcfromtimestamp(reset_ts)
+                reset_time = reset_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
             else:
-                raise GitHubAPIError(f"GitHub API error: {e.response.status_code} {e.response.text}")
+                reset_time = 'unknown'
+            
+            if status_code == 429:
+                # Rate limited
+                raise RateLimitError(reset_time)
+            elif status_code == 403:
+                # Check if it's a rate limit 403 (not just forbidden)
+                rate_limit_remaining = e.response.headers.get('X-RateLimit-Remaining')
+                if rate_limit_remaining == '0':
+                    raise RateLimitError(reset_time)
+                # Otherwise it's a generic 403
+                raise GitHubAPIError(
+                    f"GitHub API forbidden (403). "
+                    f"Check your network connection or try again later.",
+                    reset_time=reset_time
+                )
+            else:
+                raise GitHubAPIError(
+                    f"GitHub API error: {status_code} {e.response.text[:200]}",
+                    reset_time=reset_time
+                )
         else:
             raise GitHubAPIError(f"GitHub API unreachable: {e}")
 
@@ -181,7 +198,10 @@ def list_releases() -> List[dict]:
                 break
             releases.extend(page_releases)
             page += 1
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            # Re-raise if it's a rate limit or other significant error
+            if isinstance(e, (RateLimitError, GitHubAPIError)):
+                raise
             break
 
     return releases
@@ -733,12 +753,32 @@ class LlamaUpdater:
         Args:
             interactive: If True, allow manual platform selection
         """
+        from ui_manager import UIManager
+        
+        # Create UI manager for error display
+        ui = UIManager("llama.cpp")
+        
         print("Fetching latest llama.cpp release...")
-        release = get_latest_release()
-        release_tag = release["tag_name"]
-
-        print(f"Latest release: {release_tag} ({release['name']})")
-        print(f"Published: {release['published_at']}")
+        try:
+            release = get_latest_release()
+            release_tag = release["tag_name"]
+            
+            print(f"Latest release: {release_tag} ({release['name']})")
+            print(f"Published: {release['published_at']}")
+        except RateLimitError as e:
+            ui.render_error(
+                f"GitHub API rate limit exceeded.\n"
+                f"Please wait until: {e.reset_time}\n\n"
+                f"You can try again later or use a different network connection."
+            )
+            return
+        except GitHubAPIError as e:
+            reset_msg = f"\nRetries available after: {e.reset_time}" if e.reset_time != 'unknown' else ""
+            ui.render_error(
+                f"Failed to fetch release information.\n"
+                f"{e}\n\n{reset_msg}"
+            )
+            return
 
         # Get list of recent releases for tag selection menu
         releases = list_releases()
