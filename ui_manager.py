@@ -310,11 +310,11 @@ class UIManager:
                     marker = " (default)" if default is not None and i == default else ""
                     full_label = f"  {i}. {label}{marker}"
                     if i == hi_idx:
-                        win.attron(self._color_pair | curses.A_BOLD)
+                        win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
                         win.addstr(i + 2, 0, full_label)
                         if desc:
                             win.addstr(i + 3, 0, desc)
-                        win.attroff(self._color_pair | curses.A_BOLD)
+                        win.attroff(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
                     else:
                         win.attron(self._color_pair)
                         win.addstr(i + 2, 0, full_label)
@@ -336,6 +336,9 @@ class UIManager:
             menu_win = curses.newwin(menu_height, menu_width, y_offset, x_offset)
             menu_win.box()
             menu_win.keypad(True)
+            
+            # Redraw menu immediately after creating the window
+            redraw(menu_win, highlighted_idx)
         except curses.error:
             try:
                 self._cleanup_terminal()
@@ -384,6 +387,8 @@ class UIManager:
                         choice = int(chr(key)) - 1
                         if 0 <= choice < len(options):
                             highlighted_idx = choice
+                            # Redraw menu immediately to update highlight
+                            redraw(menu_win, highlighted_idx)
                     except ValueError:
                         pass
                 
