@@ -49,19 +49,6 @@ class UIManager:
         self._using_curses = False
         
         try:
-            # Force a hard reset of the terminal first
-            import subprocess
-            subprocess.run(["stty", "raw", "echo", "-icanon", "-isig"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            
-            # Check if curses is already initialized
-            is_curses_initialized = curses.has_ungetch() if hasattr(curses, 'has_ungetch') else False
-            
-            if is_curses_initialized:
-                # Curses is already initialized, reuse existing screen
-                self._using_curses = True
-                self._screen = curses.getscrptr()
-                return
-            
             # Initialize curses
             self._screen = curses.initscr()
             
@@ -73,17 +60,10 @@ class UIManager:
             curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Reverse video
             
             # Set terminal mode for interactive curses
-            # Apply all terminal settings regardless of cbreak result
             try:
                 curses.cbreak()
             except:
-                # cbreak already set or failed, try noecho and curs_set
-                try:
-                    curses.noecho()
-                    curses.curs_set(0)
-                    self._screen.timeout(100)
-                except:
-                    pass
+                pass
             
             curses.noecho()
             curses.curs_set(0)  # Hide cursor
@@ -120,17 +100,31 @@ class UIManager:
         """Clean up curses and restore terminal."""
         if self._using_curses and self._screen:
             try:
+                # Reset terminal mode
                 curses.echo()
                 curses.nocbreak()
                 curses.keypad(False)
                 curses.curs_set(1)  # Show cursor
+                # Reset colors
+                if hasattr(curses, 'reset_pair_matrix'):
+                    curses.reset_pair_matrix()
                 curses.endwin()
             except:
-                pass
+                # Force hard reset
+                try:
+                    curses.endwin()
+                except:
+                    pass
             finally:
                 self._screen = None
                 self._color_pair = None
                 self._using_curses = False
+                # Try to reset stty if available
+                try:
+                    import subprocess
+                    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                except:
+                    pass
 
     def __del__(self):
         """Cleanup curses resources."""
@@ -373,50 +367,67 @@ class UIManager:
             menu_win = curses.newwin(menu_height, menu_width, y_offset, x_offset)
             menu_win.box()
             menu_win.keypad(True)
+        except curses.error:
+            # If window creation fails, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            return -1
 
-            # Input handling
-            while True:
-                try:
-                    key = menu_win.getch(timeout=100)
-                except:
+        # Input handling
+            try:
+                while True:
                     key = -1
-                
-                if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
-                    # Cancel
-                    self._screen.erase()
-                    return -1
-                
-                elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
-                    # Move up or page up
-                    if highlighted_idx > 0:
-                        highlighted_idx -= 1
-                    else:
-                        highlighted_idx = len(options) - 1
-                
-                elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
-                    # Move down or page down
-                    if highlighted_idx < len(options) - 1:
-                        highlighted_idx += 1
-                    else:
-                        highlighted_idx = 0
-                
-                elif key >= ord('0') and key <= ord('9'):
-                    # Type number
                     try:
-                        choice = int(chr(key)) - 1
-                        if 0 <= choice < len(options):
-                            highlighted_idx = choice
-                    except ValueError:
-                        pass
-                
-                elif key == 10 or key == curses.KEY_ENTER:  # Enter
-                    # Confirm
-                    return highlighted_idx
-                
-                elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
-                    # Backspace - handle as cancel
-                    return -1
-                
+                        key = menu_win.getch(timeout=100)
+                    except (curses.error, KeyboardInterrupt):
+                        # If getch fails or user interrupts, clean up
+                        try:
+                            self._cleanup_terminal()
+                        except:
+                            pass
+                        return -1
+                    
+                    if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
+                        # Cancel
+                        try:
+                            self._screen.erase()
+                        except:
+                            pass
+                        return -1
+                    
+                    elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
+                        # Move up or page up
+                        if highlighted_idx > 0:
+                            highlighted_idx -= 1
+                        else:
+                            highlighted_idx = len(options) - 1
+                    
+                    elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
+                        # Move down or page down
+                        if highlighted_idx < len(options) - 1:
+                            highlighted_idx += 1
+                        else:
+                            highlighted_idx = 0
+                    
+                    elif key >= ord('0') and key <= ord('9'):
+                        # Type number
+                        try:
+                            choice = int(chr(key)) - 1
+                            if 0 <= choice < len(options):
+                                highlighted_idx = choice
+                        except ValueError:
+                            pass
+                    
+                    elif key == 10 or key == curses.KEY_ENTER:  # Enter
+                        # Confirm
+                        return highlighted_idx if highlighted_idx is not None else 0
+                    
+                    elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
+                        # Backspace - handle as cancel
+                        return -1
+                    
                 # Redraw menu with updated highlight
                 try:
                     menu_win.erase()
@@ -448,12 +459,39 @@ class UIManager:
                         menu_win.addstr(menu_height - 2, 0, f"Choice [{highlighted_idx}]:")
                         menu_win.attroff(self._color_pair | curses.A_BOLD)
                     menu_win.refresh()
-                except (curses.error, KeyboardInterrupt):
-                    # If window operations fail or user interrupts, clean up and return
+                except curses.error:
+                    # If window operations fail, clean up and return
                     try:
-                        self._screen.erase()
+                        self._cleanup_terminal()
                     except:
                         pass
+                    return -1
+                except KeyboardInterrupt:
+                    # User interrupted
+                    try:
+                        self._cleanup_terminal()
+                    except:
+                        pass
+                    return -1
+            except curses.error:
+                # If curses fails during input, clean up and return
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                for i, opt in enumerate(options):
+                    marker = " (default)" if default is not None and i == default else ""
+                    print(f"  {i}. {opt}{marker}")
+                try:
+                    choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+                    idx = int(choice)
+                    return idx if 0 <= idx < len(options) else -1
+                except Exception:
+                    return -1
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
                     return -1
 
         except curses.error:
@@ -465,12 +503,12 @@ class UIManager:
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
             try:
+                choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
                 idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
+                return idx if 0 <= idx < len(options) else -1
+            except Exception:
+                return -1
             try:
                 self._cleanup_terminal()
             except:
@@ -488,6 +526,18 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled
         """
+        # Final safety check for render_menu - ensure we return a valid integer
+        if not self._using_curses:
+            # Fallback for any unexpected error in render_menu
+            import subprocess
+            try:
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            except:
+                pass
+            return -1
+        if not self._screen:
+            return -1
+        return -1
         # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
             # Use console fallback with proper terminal reset
