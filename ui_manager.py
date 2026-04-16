@@ -289,6 +289,7 @@ class UIManager:
 
         # Create menu window
         self._screen.erase()
+        self._screen.refresh()  # Force full screen refresh to clear old content
         height, width = self._screen.getmaxyx()
         menu_height = len(options) + 4
         menu_width = max(max(len(opt.get('label', '')) for opt in options), 20) + 2
@@ -384,7 +385,7 @@ class UIManager:
                 elif key >= ord('0') and key <= ord('9'):
                     # Type number
                     try:
-                        choice = int(chr(key)) - 1
+                        choice = int(chr(key))
                         if 0 <= choice < len(options):
                             highlighted_idx = choice
                             # Redraw menu immediately to update highlight
@@ -408,8 +409,10 @@ class UIManager:
                 redraw(menu_win, highlighted_idx)
                 
         except curses.error:
+            # Clear screen and fall back to console
             try:
-                self._cleanup_terminal()
+                curses.curs_set(1)
+                curses.endwin()
             except:
                 pass
             for i, opt in enumerate(options):
@@ -438,18 +441,6 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled
         """
-        # Final safety check for render_menu - ensure we return a valid integer
-        if not self._using_curses:
-            # Fallback for any unexpected error in render_menu
-            import subprocess
-            try:
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass
-            return -1
-        if not self._screen:
-            return -1
-        return -1
         # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -548,20 +539,13 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
-            return default
+            # Fallback to console
+            print(f"\n{message}")
+            print("Proceed? [Y/n]: ", end="", flush=True)
+            response = sys.stdin.readline().strip().lower()
+            if response in ('', 'y', 'yes'):
+                return True
+            return False
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
                           percent: Optional[float] = None) -> None:
@@ -630,7 +614,6 @@ class UIManager:
             # Calculate bar
             if total > 0:
                 progress = min(current / total * bar_width, bar_width - 1)
-                empty_bar = " " * (bar_width - 1)
                 filled_bar = "█" * int(progress)
                 remaining_bar = "░" * (bar_width - 1 - int(progress))
                 
@@ -666,19 +649,7 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Fallback to console
             print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
             input("Press Enter to continue...")
 
@@ -751,19 +722,7 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Fallback to console
             print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -836,19 +795,7 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Fallback to console
             print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -941,19 +888,7 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Fallback to console
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
@@ -1013,20 +948,10 @@ class UIManager:
                 self._cleanup_terminal()
             except:
                 pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
-            return ""
+            # Fallback to console
+            print(f"{prompt}")
+            response = sys.stdin.readline().strip()
+            return response
 
     def get_numbered_input(self, options: List[str], 
                           default: Optional[int] = None) -> Optional[int]:
@@ -1087,4 +1012,5 @@ class UIManager:
 
         # Get input
         input_str = self._screen.getstr(x + len(f"\nChoice [{default if default is not None else 0}]: "), y + len(options) + 1, width).decode()
-        return int(input_str) if input_str.isdigit() and 0 <= int(input_str) < len(options) else None
+        idx = int(input_str) if input_str.isdigit() else None
+        return idx if idx is not None and 0 <= idx < len(options) else None
