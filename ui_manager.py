@@ -245,40 +245,18 @@ class UIManager:
         Returns:
             Selected option index, or -1 if cancelled
         """
-        # Clear screen and setup curses if needed
-        if not self._using_curses:
-            # Use console fallback with proper terminal reset
-            import subprocess
-            import sys
+        # Console fallback
+        if not self._using_curses or not self._screen:
+            # Reset terminal
             try:
-                # Reset terminal to cooked mode using curses API
-                if hasattr(curses, 'reset_prog_mode'):
-                    curses.reset_prog_mode()
-                if hasattr(curses, 'reset_pair_matrix'):
-                    curses.reset_pair_matrix()
-                # Reset terminal to cooked mode
                 subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore errors
-            
-            # Try to restore cursor visibility
-            try:
                 curses.curs_set(1)
-            except:
-                pass
-            
-            # Force a hard reset by reinitializing curses
-            try:
                 curses.endwin()
             except:
                 pass
             
-            # Clear screen and move to beginning
-            print("\033[?25h" + "\033[2J\033[H", end="")  # Show cursor, clear screen
-            
-            # Clear screen
+            # Clear and display menu
             print("\033[2J\033[H", end="")
-            
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 label = opt.get('label', '')
@@ -288,15 +266,11 @@ class UIManager:
                 if desc:
                     print(f"     {desc}")
             
-            # Print prompt and wait for input with timeout
+            # Prompt with timeout
             print(f"Choice [{highlighted if highlighted is not None else 0}]: ", end="", flush=True)
             try:
-                # Use select to timeout after 2 seconds for responsiveness
                 import select
-                import sys
-                
                 if sys.stdin.isatty():
-                    # Read with timeout
                     ready, _, _ = select.select([sys.stdin], [], [], 2.0)
                     if ready:
                         choice_str = sys.stdin.readline().strip()
@@ -313,13 +287,8 @@ class UIManager:
             except ValueError:
                 return -1
 
-        if not self._screen:
-            return -1
-
-        # Clear screen before displaying menu
+        # Create menu window
         self._screen.erase()
-        
-        # Create window for menu
         height, width = self._screen.getmaxyx()
         menu_height = len(options) + 4
         menu_width = max(max(len(opt.get('label', '')) for opt in options), 20) + 2
@@ -328,16 +297,17 @@ class UIManager:
         x_offset = 2
         highlighted_idx = highlighted if highlighted is not None else 0
         
-        def rerender_menu(win, opts, hi_idx, def_idx):
+        # Define redraw function
+        def redraw(win, hi_idx):
             try:
                 win.erase()
                 title = f"Select {self._title.lower()}"
                 win.addstr(0, 1, title.center(menu_width - 2))
                 win.addstr(1, 0, "-" * (menu_width - 2))
-                for i, opt in enumerate(opts):
+                for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
-                    marker = " (default)" if def_idx is not None and i == def_idx else ""
+                    marker = " (default)" if default is not None and i == default else ""
                     full_label = f"  {i}. {label}{marker}"
                     if i == hi_idx:
                         win.attron(self._color_pair | curses.A_BOLD)
@@ -360,7 +330,6 @@ class UIManager:
                     win.attroff(self._color_pair | curses.A_BOLD)
                 win.refresh()
             except curses.error:
-                # If window operations fail, just refresh the main screen
                 self._screen.refresh()
 
         try:
@@ -368,134 +337,72 @@ class UIManager:
             menu_win.box()
             menu_win.keypad(True)
         except curses.error:
-            # If window creation fails, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             return -1
 
-        # Input handling
-            try:
-                while True:
-                    key = -1
-                    try:
-                        key = menu_win.getch(timeout=100)
-                    except (curses.error, KeyboardInterrupt):
-                        # If getch fails or user interrupts, clean up
-                        try:
-                            self._cleanup_terminal()
-                        except:
-                            pass
-                        return -1
-                    
-                    if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
-                        # Cancel
-                        try:
-                            self._screen.erase()
-                        except:
-                            pass
-                        return -1
-                    
-                    elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
-                        # Move up or page up
-                        if highlighted_idx > 0:
-                            highlighted_idx -= 1
-                        else:
-                            highlighted_idx = len(options) - 1
-                    
-                    elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
-                        # Move down or page down
-                        if highlighted_idx < len(options) - 1:
-                            highlighted_idx += 1
-                        else:
-                            highlighted_idx = 0
-                    
-                    elif key >= ord('0') and key <= ord('9'):
-                        # Type number
-                        try:
-                            choice = int(chr(key)) - 1
-                            if 0 <= choice < len(options):
-                                highlighted_idx = choice
-                        except ValueError:
-                            pass
-                    
-                    elif key == 10 or key == curses.KEY_ENTER:  # Enter
-                        # Confirm
-                        return highlighted_idx if highlighted_idx is not None else 0
-                    
-                    elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
-                        # Backspace - handle as cancel
-                        return -1
-                    
-                # Redraw menu with updated highlight
+        # Input loop
+        try:
+            while True:
                 try:
-                    menu_win.erase()
-                    title = f"Select {self._title.lower()}"
-                    menu_win.addstr(0, 1, title.center(menu_width - 2))
-                    menu_win.addstr(1, 0, "-" * (menu_width - 2))
-                    for i, opt in enumerate(options):
-                        label = opt.get('label', '')
-                        desc = opt.get('description', '')
-                        marker = " (default)" if default is not None and i == default else ""
-                        full_label = f"  {i}. {label}{marker}"
-                        if i == highlighted_idx:
-                            menu_win.attron(self._color_pair | curses.A_BOLD)
-                            menu_win.addstr(i + 2, 0, full_label)
-                            if desc:
-                                menu_win.addstr(i + 3, 0, desc)
-                            menu_win.attroff(self._color_pair | curses.A_BOLD)
-                        else:
-                            menu_win.attron(self._color_pair)
-                            menu_win.addstr(i + 2, 0, full_label)
-                            if desc:
-                                menu_win.addstr(i + 3, 0, desc)
-                            menu_win.attroff(self._color_pair)
-                    footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
-                    truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
-                    menu_win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
-                    if highlighted_idx is not None and highlighted_idx >= 0:
-                        menu_win.attron(self._color_pair | curses.A_BOLD)
-                        menu_win.addstr(menu_height - 2, 0, f"Choice [{highlighted_idx}]:")
-                        menu_win.attroff(self._color_pair | curses.A_BOLD)
-                    menu_win.refresh()
-                except curses.error:
-                    # If window operations fail, clean up and return
+                    key = menu_win.getch()
+                except (curses.error, KeyboardInterrupt):
                     try:
                         self._cleanup_terminal()
                     except:
                         pass
                     return -1
-                except KeyboardInterrupt:
-                    # User interrupted
+                
+                # Handle keys
+                if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
+                    # Cancel
                     try:
-                        self._cleanup_terminal()
+                        self._screen.erase()
                     except:
                         pass
                     return -1
-            except curses.error:
-                # If curses fails during input, clean up and return
-                try:
-                    self._cleanup_terminal()
-                except:
-                    pass
-                for i, opt in enumerate(options):
-                    marker = " (default)" if default is not None and i == default else ""
-                    print(f"  {i}. {opt}{marker}")
-                try:
-                    choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-                    idx = int(choice)
-                    return idx if 0 <= idx < len(options) else -1
-                except Exception:
+                
+                elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
+                    # Move up or page up
+                    if highlighted_idx > 0:
+                        highlighted_idx -= 1
+                    else:
+                        highlighted_idx = len(options) - 1
+                
+                elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
+                    # Move down or page down
+                    if highlighted_idx < len(options) - 1:
+                        highlighted_idx += 1
+                    else:
+                        highlighted_idx = 0
+                
+                elif key >= ord('0') and key <= ord('9'):
+                    # Type number
+                    try:
+                        choice = int(chr(key)) - 1
+                        if 0 <= choice < len(options):
+                            highlighted_idx = choice
+                    except ValueError:
+                        pass
+                
+                elif key == 10 or key == curses.KEY_ENTER:
+                    # Confirm
+                    return highlighted_idx
+                
+                elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
+                    # Backspace - cancel
                     return -1
-                try:
-                    self._cleanup_terminal()
-                except:
-                    pass
-                    return -1
-
+                
+                # Timeout - redraw to refresh display
+                else:
+                    redraw(menu_win, highlighted_idx)
+                
+                # Redraw menu
+                redraw(menu_win, highlighted_idx)
+                
         except curses.error:
-            # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
