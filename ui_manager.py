@@ -59,35 +59,30 @@ class UIManager:
                 return
             
             # Initialize curses
-            try:
-                self._screen = curses.initscr()
-                
-                # Use alternate screen buffer for full-screen UI
-                curses.start_color()
-                curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-                self._color_pair = curses.color_pair(1) | curses.A_BOLD
-                
-                curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Reverse video
-                
-                # Set terminal mode for interactive curses
-                # If cbreak fails (terminal already in raw mode), reset and retry
-                if not curses.cbreak():
-                    curses.noecho()
-                    curses.curs_set(0)  # Hide cursor
-                    self._screen.timeout(100)  # 100ms timeout for key refresh
-                
-                self._using_curses = True
-            except (curses.error, OSError, IOError) as e:
-                # If curses fails, immediately end curses and fall back to console
-                self._cleanup_terminal()
-                print(f"Curses initialization failed: {e}", file=sys.stderr)
-                self._using_curses = False
-                self._screen = None
-                self._color_pair = None
+            self._screen = curses.initscr()
+            
+            # Use alternate screen buffer for full-screen UI
+            curses.start_color()
+            curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+            self._color_pair = curses.color_pair(1) | curses.A_BOLD
+            
+            curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Reverse video
+            
+            # Set terminal mode for interactive curses
+            # If cbreak fails (terminal already in raw mode), reset and retry
+            if not curses.cbreak():
+                curses.noecho()
+                curses.curs_set(0)  # Hide cursor
+                self._screen.timeout(100)  # 100ms timeout for key refresh
+            
+            self._using_curses = True
             
         except (curses.error, OSError, IOError) as e:
             # If curses fails, immediately end curses and fall back to console
-            self._cleanup_terminal()
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"Curses initialization failed: {e}", file=sys.stderr)
             self._using_curses = False
             self._screen = None
@@ -232,11 +227,26 @@ class UIManager:
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess
+            import sys
             try:
+                # Reset terminal to cooked mode using curses API
+                if hasattr(curses, 'reset_prog_mode'):
+                    curses.reset_prog_mode()
+                if hasattr(curses, 'reset_pair_matrix'):
+                    curses.reset_pair_matrix()
                 # Reset terminal to cooked mode
                 subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
-                pass  # Ignore stty errors
+                pass  # Ignore errors
+            
+            # Try to restore cursor visibility
+            try:
+                curses.curs_set(1)
+            except:
+                pass
+            
+            # Clear screen and move to beginning
+            print("\033[?25h" + "\033[2J\033[H", end="")  # Show cursor, clear screen
             
             # Clear screen
             print("\033[2J\033[H", end="")
@@ -290,36 +300,40 @@ class UIManager:
         x_offset = 2
         highlighted_idx = highlighted if highlighted is not None else 0
         
-        def _redraw_menu(win, opts, hi_idx, def_idx):
-            win.erase()
-            title = f"Select {self._title.lower()}"
-            win.addstr(0, 1, title.center(menu_width - 2))
-            win.addstr(1, 0, "-" * (menu_width - 2))
-            for i, opt in enumerate(opts):
-                label = opt.get('label', '')
-                desc = opt.get('description', '')
-                marker = " (default)" if def_idx is not None and i == def_idx else ""
-                full_label = f"  {i}. {label}{marker}"
-                if i == hi_idx:
+        def rerender_menu(win, opts, hi_idx, def_idx):
+            try:
+                win.erase()
+                title = f"Select {self._title.lower()}"
+                win.addstr(0, 1, title.center(menu_width - 2))
+                win.addstr(1, 0, "-" * (menu_width - 2))
+                for i, opt in enumerate(opts):
+                    label = opt.get('label', '')
+                    desc = opt.get('description', '')
+                    marker = " (default)" if def_idx is not None and i == def_idx else ""
+                    full_label = f"  {i}. {label}{marker}"
+                    if i == hi_idx:
+                        win.attron(self._color_pair | curses.A_BOLD)
+                        win.addstr(i + 2, 0, full_label)
+                        if desc:
+                            win.addstr(i + 3, 0, desc)
+                        win.attroff(self._color_pair | curses.A_BOLD)
+                    else:
+                        win.attron(self._color_pair)
+                        win.addstr(i + 2, 0, full_label)
+                        if desc:
+                            win.addstr(i + 3, 0, desc)
+                        win.attroff(self._color_pair)
+                footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
+                truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
+                win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
+                if hi_idx is not None and hi_idx >= 0:
                     win.attron(self._color_pair | curses.A_BOLD)
-                    win.addstr(i + 2, 0, full_label)
-                    if desc:
-                        win.addstr(i + 3, 0, desc)
+                    win.addstr(menu_height - 2, 0, f"Choice [{hi_idx}]:")
                     win.attroff(self._color_pair | curses.A_BOLD)
-                else:
-                    win.attron(self._color_pair)
-                    win.addstr(i + 2, 0, full_label)
-                    if desc:
-                        win.addstr(i + 3, 0, desc)
-                    win.attroff(self._color_pair)
-            footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
-            truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
-            win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
-            if hi_idx is not None and hi_idx >= 0:
-                win.attron(self._color_pair | curses.A_BOLD)
-                win.addstr(menu_height - 2, 0, f"Choice [{hi_idx}]:")
-                win.attroff(self._color_pair | curses.A_BOLD)
-            win.refresh()
+                win.refresh()
+            except curses.error:
+                # If window operations fail, just refresh the main screen
+                self._screen.refresh()
 
         try:
             menu_win = curses.newwin(menu_height, menu_width, y_offset, x_offset)
@@ -370,10 +384,63 @@ class UIManager:
                     return -1
                 
                 # Redraw menu with updated highlight
-                self._redraw_menu(menu_win, options, highlighted_idx, default)
+                try:
+                    menu_win.erase()
+                    title = f"Select {self._title.lower()}"
+                    menu_win.addstr(0, 1, title.center(menu_width - 2))
+                    menu_win.addstr(1, 0, "-" * (menu_width - 2))
+                    for i, opt in enumerate(options):
+                        label = opt.get('label', '')
+                        desc = opt.get('description', '')
+                        marker = " (default)" if default is not None and i == default else ""
+                        full_label = f"  {i}. {label}{marker}"
+                        if i == highlighted_idx:
+                            menu_win.attron(self._color_pair | curses.A_BOLD)
+                            menu_win.addstr(i + 2, 0, full_label)
+                            if desc:
+                                menu_win.addstr(i + 3, 0, desc)
+                            menu_win.attroff(self._color_pair | curses.A_BOLD)
+                        else:
+                            menu_win.attron(self._color_pair)
+                            menu_win.addstr(i + 2, 0, full_label)
+                            if desc:
+                                menu_win.addstr(i + 3, 0, desc)
+                            menu_win.attroff(self._color_pair)
+                    footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
+                    truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
+                    menu_win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
+                    if highlighted_idx is not None and highlighted_idx >= 0:
+                        menu_win.attron(self._color_pair | curses.A_BOLD)
+                        menu_win.addstr(menu_height - 2, 0, f"Choice [{highlighted_idx}]:")
+                        menu_win.attroff(self._color_pair | curses.A_BOLD)
+                    menu_win.refresh()
+                except (curses.error, KeyboardInterrupt):
+                    # If window operations fail or user interrupts, clean up and return
+                    try:
+                        self._screen.erase()
+                    except:
+                        pass
+                    return -1
 
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             return -1
 
     def render_confirmation(self, message: str, default: bool = True) -> bool:
@@ -479,8 +546,25 @@ class UIManager:
                     self._screen.erase()
                     return False
 
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             return default
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
@@ -580,8 +664,25 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             bar_win.erase()
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
             input("Press Enter to continue...")
 
@@ -648,8 +749,25 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             msg_win.erase()
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -716,8 +834,25 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             msg_win.erase()
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -804,8 +939,25 @@ class UIManager:
                 if highlighted is not None:
                     self._screen.refresh()
 
-        except:
-            # If anything fails, fall back to console
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
@@ -855,9 +1007,30 @@ class UIManager:
         self._screen.attroff(self._color_pair)
         self._screen.refresh()
 
-        # Get input
-        input_str = self._screen.getstr(x + len(prompt), y, width - len(prompt)).decode()
-        return input_str.strip()
+        try:
+            # Get input
+            input_str = self._screen.getstr(x + len(prompt), y, width - len(prompt)).decode()
+            return input_str.strip()
+        except curses.error:
+            # If curses fails during input, clean up and return
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            return ""
 
     def get_numbered_input(self, options: List[str], 
                           default: Optional[int] = None) -> Optional[int]:

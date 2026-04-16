@@ -64,19 +64,17 @@ class TestUIManagerPytest:
              patch('curses.KEY_PPAGE'), \
              patch('curses.KEY_NPAGE'), \
              patch('curses.A_REVERSE'), \
-             patch('curses.A_BOLD'):
+             patch('curses.A_BOLD'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
-
-            # Test: Start at 0, go up (wraps to 4), go down (wraps to 0)
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
             mock_win.addstr.return_value = None
             mock_win.attron.return_value = None
             mock_win.attroff.return_value = None
             mock_win.refresh.return_value = None
+            mock_screen.getmaxyx.return_value = (20, 60)
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [
@@ -94,17 +92,17 @@ class TestUIManagerPytest:
         
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
-             patch('curses.KEY_DOWN'):
+             patch('curses.KEY_DOWN'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (10, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
             mock_win.addstr.return_value = None
             mock_win.attron.return_value = None
             mock_win.attroff.return_value = None
             mock_win.refresh.return_value = None
+            mock_screen.getmaxyx.return_value = (20, 60)
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 # Type '3' (keycode 51), then Enter (10)
@@ -119,13 +117,13 @@ class TestUIManagerPytest:
         for cancel_key in [ord('q'), 27, curses.KEY_RESIZE, curses.KEY_BACKSPACE, 127, 8]:
             with patch.object(self.ui, '_screen') as mock_screen, \
                  patch.object(self.ui, 'refresh') as mock_refresh, \
-                 patch('curses.KEY_DOWN'):
+                 patch('curses.KEY_DOWN'), \
+                 patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
                 
-                mock_screen.getmaxyx.return_value = (10, 60)
-                mock_win = MagicMock()
-                mock_screen.newwin.return_value = mock_win
+                mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
-                
+                mock_screen.getmaxyx.return_value = (20, 60)
+
                 with patch.object(mock_win, 'getch') as mock_getch:
                     mock_getch.return_value = cancel_key
                     
@@ -136,13 +134,13 @@ class TestUIManagerPytest:
         """Enter key confirms the action."""
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
-             patch('curses.KEY_RESIZE'):
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_screen.getmaxyx.return_value = (20, 60)
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = 10  # Enter
                 
@@ -153,17 +151,17 @@ class TestUIManagerPytest:
         """n or N cancels the action."""
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
-             patch('curses.KEY_RESIZE'):
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
             mock_win.addstr.return_value = None
             mock_win.attron.return_value = None
             mock_win.attroff.return_value = None
             mock_win.refresh.return_value = None
+            mock_screen.getmaxyx.return_value = (20, 60)
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = ord('n')
@@ -174,13 +172,13 @@ class TestUIManagerPytest:
         """y or Y confirms the action."""
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
-             patch('curses.KEY_RESIZE'):
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_screen.getmaxyx.return_value = (20, 60)
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = ord('Y')
                 
@@ -192,14 +190,14 @@ class TestUIManagerPytest:
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
              patch('curses.KEY_RESIZE'), \
-             patch('builtins.input'):
+             patch('builtins.input'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.getch.return_value = 10
-            
+            mock_screen.getmaxyx.return_value = (20, 60)
+
             self.ui.render_progress_bar("file.zip", 1000, 10000, percent=10.5)
     
     def test_progress_bar_spinner(self):
@@ -207,14 +205,14 @@ class TestUIManagerPytest:
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh') as mock_refresh, \
              patch('curses.KEY_RESIZE'), \
-             patch('builtins.input'):
+             patch('builtins.input'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.getch.return_value = 10
-            
+            mock_screen.getmaxyx.return_value = (20, 60)
+
             # Test with total=0 to trigger spinner mode
             self.ui.render_progress_bar("unknown.zip", 0, 0, percent=None)
     
@@ -226,17 +224,17 @@ class TestUIManagerPytest:
         with patch.object(self.ui, '_screen') as mock_screen, \
              patch.object(self.ui, 'refresh'), \
              patch('curses.KEY_DOWN'), \
-             patch('curses.KEY_UP'):
+             patch('curses.KEY_UP'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
             
-            mock_screen.getmaxyx.return_value = (10, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
+            mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
             mock_win.addstr.return_value = None
             mock_win.attron.return_value = None
             mock_win.attroff.return_value = None
             mock_win.refresh.return_value = None
+            mock_screen.getmaxyx.return_value = (20, 60)
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [ord('2'), 10]  # Select option 2
@@ -246,11 +244,10 @@ class TestUIManagerPytest:
             # Confirmation
             with patch.object(self.ui, '_screen') as mock_screen, \
                  patch.object(self.ui, 'refresh'), \
-                 patch('curses.KEY_RESIZE'):
+                 patch('curses.KEY_RESIZE'), \
+                 patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
                 
-                mock_screen.getmaxyx.return_value = (20, 60)
-                mock_win = MagicMock()
-                mock_screen.newwin.return_value = mock_win
+                mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
                 
                 with patch.object(mock_win, 'getch') as mock_getch:
