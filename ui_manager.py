@@ -290,9 +290,11 @@ class UIManager:
         # Create menu window
         self._screen.erase()
         self._screen.refresh()  # Force full screen refresh to clear old content
-        height, width = self._screen.getmaxyx()
+        screen_height, screen_width = self._screen.getmaxyx()
         menu_height = len(options) + 4
-        menu_width = max(max(len(opt.get('label', '')) for opt in options), 20) + 2
+        # Calculate menu width: max label length + padding, but ensure it fits on screen
+        max_label_len = max(len(opt.get('label', '')) for opt in options) if options else 20
+        menu_width = min(max_label_len + 10, screen_width - 8) + 2
         
         y_offset = 2
         x_offset = 2
@@ -483,6 +485,10 @@ class UIManager:
 
         height, width = self._screen.getmaxyx()
         
+        # Clear screen and move cursor to top-left
+        self._screen.erase()
+        self._screen.move(0, 0)
+        
         # Create window
         try:
             prompt_win = curses.newwin(4, width - 4, 1, 2)
@@ -490,7 +496,9 @@ class UIManager:
             prompt_win.keypad(True)
             
             # Title
+            prompt_win.attron(self._color_pair)
             prompt_win.addstr(0, 1, "Confirm".center(width - 4))
+            prompt_win.attroff(self._color_pair)
             prompt_win.addstr(1, 0, "-" * (width - 6))
             
             # Message
@@ -505,7 +513,7 @@ class UIManager:
             prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
             
             prompt_win.refresh()
-            self.refresh()
+            self._screen.refresh()
 
             # Input handling
             while True:
