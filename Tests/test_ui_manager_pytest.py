@@ -69,21 +69,24 @@ class TestUIManagerPytest:
             mock_screen.getmaxyx.return_value = (20, 60)
             mock_win = MagicMock()
             mock_screen.newwin.return_value = mock_win
-            
+
             # Test: Start at 0, go up (wraps to 4), go down (wraps to 0)
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [
                     curses.KEY_UP,  # Move up: 0 -> 4
                     curses.KEY_DOWN,  # Move down: 4 -> 0
                     10,  # Enter to confirm
                 ]
-                
-                # Patch the _draw_menu to return immediately after drawing
-                with patch('ui_manager.UIManager._draw_menu'):
-                    result = self.ui.render_menu(options, default=0, highlighted=0)
-                    assert result == 0
+
+                result = self.ui.render_menu(options, default=0, highlighted=0)
+                assert result == 0
     
     def test_menu_typing_selection(self):
         """Test selecting by typing the number."""
@@ -97,14 +100,17 @@ class TestUIManagerPytest:
             mock_win = MagicMock()
             mock_screen.newwin.return_value = mock_win
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 # Type '3' (keycode 51), then Enter (10)
                 mock_getch.side_effect = [ord('3'), 10]
-                
-                with patch('ui_manager.UIManager._draw_menu'):
-                    result = self.ui.render_menu(options, default=0, highlighted=0)
-                    assert result == 3
+                result = self.ui.render_menu(options, default=0, highlighted=0)
+                assert result == 3
     
     def test_menu_cancel_keys(self):
         """Test that cancel keys return -1."""
@@ -153,13 +159,16 @@ class TestUIManagerPytest:
             mock_win = MagicMock()
             mock_screen.newwin.return_value = mock_win
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = ord('n')
-                
-                with patch('ui_manager.UIManager._draw_menu'):
-                    result = self.ui.render_confirmation("Are you sure?")
-                    assert result is False
+                result = self.ui.render_confirmation("Are you sure?")
+                assert result is False
     
     def test_confirmation_y_confirms(self):
         """y or Y confirms the action."""
@@ -223,30 +232,33 @@ class TestUIManagerPytest:
             mock_win = MagicMock()
             mock_screen.newwin.return_value = mock_win
             mock_win.getyx.return_value = (0, 0)
-            
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [ord('2'), 10]  # Select option 2
-                with patch('ui_manager.UIManager._draw_menu'):
-                    result = self.ui.render_menu(options, default=0, highlighted=0)
-                    assert result == 2
-        
-        # Confirmation
-        with patch.object(self.ui, '_screen') as mock_screen, \
-             patch.object(self.ui, 'refresh'), \
-             patch('curses.KEY_RESIZE'):
+                result = self.ui.render_menu(options, default=0, highlighted=0)
+                assert result == 2
             
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
-            mock_win.getyx.return_value = (0, 0)
-            
-            with patch.object(mock_win, 'getch') as mock_getch:
-                mock_getch.return_value = 10  # Enter
-                with patch('ui_manager.UIManager._draw_menu'):
+            # Confirmation
+            with patch.object(self.ui, '_screen') as mock_screen, \
+                 patch.object(self.ui, 'refresh'), \
+                 patch('curses.KEY_RESIZE'):
+                
+                mock_screen.getmaxyx.return_value = (20, 60)
+                mock_win = MagicMock()
+                mock_screen.newwin.return_value = mock_win
+                mock_win.getyx.return_value = (0, 0)
+                
+                with patch.object(mock_win, 'getch') as mock_getch:
+                    mock_getch.return_value = 10  # Enter
                     confirmed = self.ui.render_confirmation("Proceed?")
                     assert confirmed is True
-        
-        # Cleanup
+            
+            # Cleanup
         self.ui._cleanup_terminal()
 
 

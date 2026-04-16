@@ -124,6 +124,11 @@ def test_menu_navigation():
         mock_win = MagicMock()
         mock_screen.newwin.return_value = mock_win
         mock_win.getyx.return_value = (0, 0)
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
         
         # Patch screen temporarily
         original_screen = ui._screen
@@ -131,10 +136,10 @@ def test_menu_navigation():
         
         with patch.object(ui, 'refresh', return_value=None):
             # Test 1: Enter selects highlighted
-            with patch('builtins.input') as mock_input:
-                mock_input.return_value = "2"
-                result = ui.render_menu(options, default=0, highlighted=0)
-                assert result == 2, f"Should return selected index, got {result}"
+            # Setup mock_win.getch() to return KEY_ENTER when called in render_menu()
+            mock_win.getch.side_effect = [KEY_ENTER]
+            result = ui.render_menu(options, default=0, highlighted=0)
+            assert result == 0, f"Should return selected index, got {result}"
             
             # Test 2: Arrow keys cycle
             mock_win.getch.side_effect = [KEY_DOWN, KEY_UP, KEY_ENTER]

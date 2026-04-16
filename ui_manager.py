@@ -288,63 +288,43 @@ class UIManager:
         
         y_offset = 2
         x_offset = 2
+        highlighted_idx = highlighted if highlighted is not None else 0
+        
+        def _redraw_menu(win, opts, hi_idx, def_idx):
+            win.erase()
+            title = f"Select {self._title.lower()}"
+            win.addstr(0, 1, title.center(menu_width - 2))
+            win.addstr(1, 0, "-" * (menu_width - 2))
+            for i, opt in enumerate(opts):
+                label = opt.get('label', '')
+                desc = opt.get('description', '')
+                marker = " (default)" if def_idx is not None and i == def_idx else ""
+                full_label = f"  {i}. {label}{marker}"
+                if i == hi_idx:
+                    win.attron(self._color_pair | curses.A_BOLD)
+                    win.addstr(i + 2, 0, full_label)
+                    if desc:
+                        win.addstr(i + 3, 0, desc)
+                    win.attroff(self._color_pair | curses.A_BOLD)
+                else:
+                    win.attron(self._color_pair)
+                    win.addstr(i + 2, 0, full_label)
+                    if desc:
+                        win.addstr(i + 3, 0, desc)
+                    win.attroff(self._color_pair)
+            footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
+            truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
+            win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
+            if hi_idx is not None and hi_idx >= 0:
+                win.attron(self._color_pair | curses.A_BOLD)
+                win.addstr(menu_height - 2, 0, f"Choice [{hi_idx}]:")
+                win.attroff(self._color_pair | curses.A_BOLD)
+            win.refresh()
+
         try:
             menu_win = curses.newwin(menu_height, menu_width, y_offset, x_offset)
             menu_win.box()
             menu_win.keypad(True)
-            
-            # Helper function to redraw the entire menu
-            def _draw_menu(hi_idx):
-                # Clear the window
-                menu_win.erase()
-                
-                # Title
-                title = f"Select {self._title.lower()}"
-                menu_win.addstr(0, 1, title.center(menu_width - 2))
-                menu_win.addstr(1, 0, "-" * (menu_width - 2))
-                
-                # Options
-                for i, opt in enumerate(options):
-                    label = opt.get('label', '')
-                    desc = opt.get('description', '')
-                    
-                    # Build label with default marker
-                    marker = ""
-                    if default is not None and i == default:
-                        marker = " (default)"
-                    
-                    full_label = f"  {i}. {label}{marker}"
-                    
-                    if i == hi_idx:
-                        # Highlighted: reverse video
-                        menu_win.attron(curses.A_REVERSE | curses.A_BOLD)
-                        menu_win.addstr(i + 2, 0, full_label)
-                        if desc:
-                            menu_win.addstr(i + 3, 0, desc)
-                        menu_win.attroff(curses.A_REVERSE | curses.A_BOLD)
-                    else:
-                        menu_win.attron(self._color_pair)
-                        menu_win.addstr(i + 2, 0, full_label)
-                        if desc:
-                            menu_win.addstr(i + 3, 0, desc)
-                        menu_win.attroff(self._color_pair)
-                
-                # Footer instructions
-                footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
-                truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
-                menu_win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
-                
-                # Show current position
-                if hi_idx is not None and hi_idx >= 0:
-                    menu_win.attron(curses.A_REVERSE | curses.A_BOLD)
-                    menu_win.addstr(menu_height - 2, 0, f"Choice [{hi_idx}]:")
-                    menu_win.attroff(curses.A_REVERSE | curses.A_BOLD)
-                
-                menu_win.refresh()
-                self.refresh()
-            
-            # Initial draw
-            _draw_menu(highlighted_idx if highlighted_idx is not None else 0)
 
             # Input handling
             while True:
@@ -390,7 +370,7 @@ class UIManager:
                     return -1
                 
                 # Redraw menu with updated highlight
-                _draw_menu(highlighted_idx)
+                self._redraw_menu(menu_win, options, highlighted_idx, default)
 
         except:
             # If anything fails, fall back to console
