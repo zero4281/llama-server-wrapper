@@ -49,6 +49,10 @@ class UIManager:
         self._using_curses = False
         
         try:
+            # Force a hard reset of the terminal first
+            import subprocess
+            subprocess.run(["stty", "raw", "echo", "-icanon", "-isig"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            
             # Check if curses is already initialized
             is_curses_initialized = curses.has_ungetch() if hasattr(curses, 'has_ungetch') else False
             
@@ -69,20 +73,44 @@ class UIManager:
             curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Reverse video
             
             # Set terminal mode for interactive curses
-            # If cbreak fails (terminal already in raw mode), reset and retry
-            if not curses.cbreak():
-                curses.noecho()
-                curses.curs_set(0)  # Hide cursor
-                self._screen.timeout(100)  # 100ms timeout for key refresh
+            # Apply all terminal settings regardless of cbreak result
+            try:
+                curses.cbreak()
+            except:
+                # cbreak already set or failed, try noecho and curs_set
+                try:
+                    curses.noecho()
+                    curses.curs_set(0)
+                    self._screen.timeout(100)
+                except:
+                    pass
+            
+            curses.noecho()
+            curses.curs_set(0)  # Hide cursor
+            self._screen.timeout(100)  # 100ms timeout for key refresh
             
             self._using_curses = True
             
         except (curses.error, OSError, IOError) as e:
             # If curses fails, immediately end curses and fall back to console
+            # First, try to reset terminal state
             try:
-                self._cleanup_terminal()
+                curses.reset_prog_mode()
+                curses.reset_pair_matrix()
+                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
                 pass
+            
+            try:
+                curses.curs_set(1)
+            except:
+                pass
+            
+            try:
+                curses.endwin()
+            except:
+                pass
+            
             print(f"Curses initialization failed: {e}", file=sys.stderr)
             self._using_curses = False
             self._screen = None
@@ -242,6 +270,12 @@ class UIManager:
             # Try to restore cursor visibility
             try:
                 curses.curs_set(1)
+            except:
+                pass
+            
+            # Force a hard reset by reinitializing curses
+            try:
+                curses.endwin()
             except:
                 pass
             
