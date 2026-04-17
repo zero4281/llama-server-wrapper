@@ -155,7 +155,11 @@ class UIManager:
     def _get_white_attr(self):
         """Get the white attribute for use when curses is initialized."""
         if self._using_curses and self._color_pair is not None:
-            return curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE
+            try:
+                return curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE
+            except (curses.error, OSError, AttributeError):
+                # Fallback to just bold attribute if color_pair fails
+                return curses.A_BOLD
         return None
     
     def print_header(self, text: str):
