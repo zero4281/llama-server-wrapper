@@ -283,6 +283,8 @@ class UIManager:
         Returns:
             Selected option index, or -1 if cancelled
         """
+        logger.debug(f"render_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
+        
         # Console fallback
         if not self._using_curses or not self._screen:
             # Reset terminal
@@ -401,6 +403,7 @@ class UIManager:
 
         # Input loop
         try:
+            logger.debug("Starting render_menu input loop")
             while True:
                 try:
                     key = menu_win.getch()
@@ -412,70 +415,118 @@ class UIManager:
                         pass
                     return -1
                 
-                # Handle keys
-                # First, try to interpret the key as a selection number
-                selection = None
-                try:
-                    if isinstance(key, int) and key >= ord('0') and key <= ord('9'):
-                        selection = int(chr(key))
-                    elif key is not None and not isinstance(key, int):
-                        # Handle non-integer keys (e.g., mocked values)
-                        try:
-                            selection = int(key)
-                        except (ValueError, TypeError, AttributeError, OverflowError):
-                            pass
-                    elif key == 10 or key == curses.KEY_ENTER or key == 27 or key == ord('q') or key == curses.KEY_RESIZE or key == curses.KEY_UP or key == curses.KEY_PPAGE or key == curses.KEY_DOWN or key == curses.KEY_NPAGE or key == curses.KEY_BACKSPACE or key == 127 or key == 8:
-                        # Special keys
-                        pass
-                except (TypeError, AttributeError):
-                    pass
+                # Log the raw key value
+                logger.debug(f"Received key: {key} (type: {type(key).__name__})")
                 
-                if selection is not None and 0 <= selection < len(options):
-                    # Select the option
-                    highlighted_idx = selection
+                # Handle keys
+                # Handle numeric key input (0-9) for direct selection
+                if isinstance(key, int) and key >= ord('0') and key <= ord('9'):
+                    selection = int(chr(key))
+                    logger.debug(f"Numeric key detected: {key} -> selection={selection}")
+                    if 0 <= selection < len(options):
+                        # Select the option
+                        highlighted_idx = selection
+                        logger.debug(f"Selection confirmed: option {selection}")
+                        try:
+                            redraw(menu_win, highlighted_idx)
+                        except:
+                            pass
+                        continue
+                elif isinstance(key, str) and len(key) == 1 and key.isdecimal():
+                    selection = int(key)
+                    logger.debug(f"Numeric key detected (string): {key} -> selection={selection}")
+                    if 0 <= selection < len(options):
+                        # Select the option
+                        highlighted_idx = selection
+                        logger.debug(f"Selection confirmed: option {selection}")
+                        try:
+                            redraw(menu_win, highlighted_idx)
+                        except:
+                            pass
+                        continue
+                
+                # Handle navigation and control keys
+                if key == curses.KEY_UP:
+                    # Move up one option
+                    old_hi = highlighted_idx
+                    if highlighted_idx > 0:
+                        highlighted_idx -= 1
+                    else:
+                        highlighted_idx = len(options) - 1  # Wrap to last
+                    logger.debug(f"Navigation: UP key, {old_hi} -> {highlighted_idx}")
+                    redraw(menu_win, highlighted_idx)
+                    continue
+                
+                if key == curses.KEY_PPAGE:
+                    # Page up - move up half screen (5 options for 10-option menu)
+                    old_hi = highlighted_idx
+                    half_screen = 5  # Default, can be adjusted based on screen
+                    new_idx = highlighted_idx - half_screen
+                    if new_idx < 0:
+                        # Wrap to end
+                        highlighted_idx = len(options) - (abs(new_idx) % len(options))
+                    else:
+                        highlighted_idx = new_idx
+                    logger.debug(f"Navigation: PAGE UP key, {old_hi} -> {highlighted_idx}")
+                    redraw(menu_win, highlighted_idx)
+                    continue
+                
+                if key == curses.KEY_DOWN:
+                    # Move down one option
+                    old_hi = highlighted_idx
+                    if highlighted_idx < len(options) - 1:
+                        highlighted_idx += 1
+                    else:
+                        highlighted_idx = 0  # Wrap to first
+                    logger.debug(f"Navigation: DOWN key, {old_hi} -> {highlighted_idx}")
+                    redraw(menu_win, highlighted_idx)
+                    continue
+                
+                if key == curses.KEY_NPAGE:
+                    # Page down - move down half screen (5 options for 10-option menu)
+                    old_hi = highlighted_idx
+                    half_screen = 5  # Default, can be adjusted based on screen
+                    new_idx = highlighted_idx + half_screen
+                    if new_idx < len(options):
+                        highlighted_idx = new_idx
+                    else:
+                        # Wrap to beginning
+                        highlighted_idx = new_idx % len(options)
+                    logger.debug(f"Navigation: PAGE DOWN key, {old_hi} -> {highlighted_idx}")
+                    redraw(menu_win, highlighted_idx)
+                    continue
+                
+                if key == 343 or key == curses.KEY_ENTER:
+                    # Confirm selection
+                    logger.debug(f"Confirmation requested: highlighted={highlighted_idx}")
                     try:
-                        redraw(menu_win, highlighted_idx)
-                    except:
+                        self._screen.refresh()
+                    except (curses.error, OSError, EOFError):
                         pass
-                elif key is None or key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
+                    return highlighted_idx
+                
+                if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
                     # Cancel
+                    logger.debug(f"Cancellation requested: key={key}")
                     try:
                         self._screen.erase()
                         self._screen.refresh()
                     except (curses.error, OSError, EOFError):
                         pass
                     return -1
-                elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
-                    # Move up or page up
-                    if highlighted_idx > 0:
-                        highlighted_idx -= 1
-                    else:
-                        highlighted_idx = len(options) - 1
-                    redraw(menu_win, highlighted_idx)
-                elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
-                    # Move down or page down
-                    if highlighted_idx < len(options) - 1:
-                        highlighted_idx += 1
-                    else:
-                        highlighted_idx = 0
-                    redraw(menu_win, highlighted_idx)
-                elif key == 10 or key == curses.KEY_ENTER:
-                    # Confirm
-                    try:
-                        self._screen.refresh()
-                    except (curses.error, OSError, EOFError):
-                        pass
-                    return highlighted_idx
-                elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
+                
+                if key == curses.KEY_BACKSPACE or key == 127 or key == 8:
                     # Backspace - cancel
+                    logger.debug(f"Backspace received: cancelling")
                     try:
                         self._screen.refresh()
                     except (curses.error, OSError, EOFError):
                         pass
                     return -1
-                else:
-                    # Timeout - redraw to refresh display
-                    redraw(menu_win, highlighted_idx)
+                
+                # Timeout - redraw to refresh display
+                logger.debug(f"Timeout event, current highlighted={highlighted_idx}")
+                redraw(menu_win, highlighted_idx)
                 
                 # Small delay to prevent rapid redraws
                 curses.napms(10) if hasattr(curses, 'napms') else None
@@ -483,6 +534,7 @@ class UIManager:
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Menu input loop error: {e}")
             # Clear screen and fall back to console
+            logger.warning(f"Falling back to console mode due to error: {e}")
             try:
                 curses.curs_set(1)
                 curses.endwin()
@@ -522,6 +574,7 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled
         """
+        logger.debug(f"render_confirmation called with message={message[:50]}..., default={default}")
         # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -606,41 +659,49 @@ class UIManager:
             self._screen.refresh()
 
             # Input handling
+            logger.debug("Starting confirmation input loop")
             while True:
                 self._screen.refresh()
                 
                 key = prompt_win.getch()
+                logger.debug(f"Confirmation: received key={key}")
                 
                 if key == 27 or key == curses.KEY_RESIZE:
                     # Cancel
+                    logger.debug("Confirmation: ESC/RESIZE pressed, cancelling")
                     self._screen.erase()
                     return False
                 
                 elif key == 10 or key == curses.KEY_ENTER:  # Enter
                     # Confirm (default yes)
+                    logger.debug("Confirmation: ENTER pressed, confirming")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
                 elif key == ord('y') or key == ord('Y'):
                     # Confirm
+                    logger.debug("Confirmation: 'y' pressed, confirming")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
                 elif key == ord('n') or key == ord('N'):
                     # Cancel
+                    logger.debug("Confirmation: 'n' pressed, cancelling")
                     self._screen.erase()
                     self._screen.refresh()
                     return False
                 
                 elif key >= 0 and key < 127:  # Regular character input
                     # Handle character input (e.g., typing 'y' or 'n')
+                    logger.debug(f"Confirmation: character input received: {chr(key)}")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
                 # Timeout - assume default (yes)
+                logger.debug("Confirmation: timeout, assuming default yes")
                 self._screen.erase()
                 self._screen.refresh()
                 return True
@@ -683,6 +744,10 @@ class UIManager:
             total: Total bytes
             percent: Optional pre-calculated percentage
         """
+        if percent is not None:
+            logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}, percent={percent:.1f}%")
+        else:
+            logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess
@@ -765,8 +830,10 @@ class UIManager:
             bar_win.refresh()
             
             # Wait for key
+            logger.debug("Progress bar: waiting for key press")
             self.refresh()
-            self._screen.getch()
+            key = self._screen.getch()
+            logger.debug(f"Progress bar: key received={key}")
             bar_win.erase()
         except curses.error as e:
             logger.error(f"Progress bar window error: {e}")
@@ -789,6 +856,7 @@ class UIManager:
 
     def render_success(self, message: str) -> None:
         """Render success message."""
+        logger.debug(f"render_success called: {message[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess
@@ -871,6 +939,7 @@ class UIManager:
 
     def render_error(self, message: str) -> None:
         """Render error message."""
+        logger.debug(f"render_error called: {message[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess
@@ -965,6 +1034,7 @@ class UIManager:
         Returns:
             Selected index, or None if cancelled
         """
+        logger.debug(f"print_simple_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
         if not self._using_curses:
             # Ensure terminal is reset before printing
             self._cleanup_terminal()
@@ -1040,7 +1110,7 @@ class UIManager:
                             highlighted = choice
                     except (ValueError, TypeError, AttributeError):
                         pass
-                elif key == 10 or key == curses.KEY_ENTER:
+                elif key == 343 or key == curses.KEY_ENTER:
                     return highlighted
 
                 if highlighted is not None:
@@ -1081,6 +1151,7 @@ class UIManager:
 
     def get_input(self, prompt: str) -> str:
         """Get user input with confirmation styling."""
+        logger.debug(f"get_input called with prompt={prompt[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess
@@ -1146,6 +1217,7 @@ class UIManager:
     def get_numbered_input(self, options: List[str], 
                           default: Optional[int] = None) -> Optional[int]:
         """Get numbered input from user."""
+        logger.debug(f"get_numbered_input called with options={len(options)}, default={default}")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
             import subprocess

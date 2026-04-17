@@ -689,6 +689,8 @@ def install_release(release: dict, release_tag: str) -> None:
     if not confirmed:
         print("Installation cancelled.")
         return
+    
+    logger.info(f"User confirmed installation of {release_tag} - {asset_name}")
 
     # Download
     print(f"\nDownloading {selected_asset['name']}...")

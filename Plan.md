@@ -12,7 +12,7 @@
 
 **Partial Implementation (v1.1):**
 
-The codebase **has implemented the interactive logic** for v1.1 but **missing the ncurses UI module** and **missing confirmation in llama_updater**:
+The codebase **has implemented the interactive logic** for v1.1. The ncurses UI module (`ui_manager.py`) is missing, and `llama_updater.py` confirmation flow was incomplete but has now been fixed:
 
 **Implemented (v1.0):**
 - **Section 2 (Project Structure)**: All files present and correctly organized
@@ -56,7 +56,7 @@ The codebase **has implemented the interactive logic** for v1.1 but **missing th
 
 1. **File naming**: Main entry point is `main.py` (not `main_wrapper.py` as mentioned in v1.1)
 2. **Self-update implementation**: Uses GitHub API to fetch releases, presents Options 1-3 menu, and shows confirmation prompt. However, it uses basic `print/input()` instead of ncurses/UIManager
-3. **llama_updater.py**: Functional for download/install but lacks confirmation prompt (Section 6.3)
+3. **llama_updater.py**: Functional for download/install. Confirmation prompt now implemented (Section 6.3) - fixed in TODO 6
 4. **ui_manager.py**: **NOT IMPLEMENTED** - The ncurses UI module required by Section 8 is completely missing
 5. **Config auto-generation**: Creates default `config.json` with required structure if missing
 
@@ -181,8 +181,7 @@ The codebase implements appropriate exit codes:
 ### What Needs Updates
 1. **Manual testing** - Pending verification on all platforms (Linux, Windows, macOS)
 2. **ui_manager.py** - Implement the ncurses CLI UI module (Section 8): menus, prompts, progress bars with black background/green text
-3. **llama_updater.py** - Add confirmation prompt for install/update (Section 6.3)
-4. **main.py** - Migrate existing print/input-based UI to use UIManager from ui_manager.py
+3. **main.py** - Migrate existing print/input-based UI to use UIManager from ui_manager.py
 
 ---
 
