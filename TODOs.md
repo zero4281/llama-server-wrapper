@@ -340,7 +340,7 @@ class TestScreenSizes(unittest.TestCase):
 - **Description:** Create tests that verify timeout behavior in the `render_menu` input loop. Tests should check that the menu handles timeouts correctly (e.g., after 2 seconds of no input) and that the fallback console output is displayed.
 
 ### TODO 9: Refactor Error Handling in ui_manager.py
-- **Status:** Incomplete
+- **Status:** Completed
 - **Priority:** Low
 - **Dependencies:** None
 - **Description:** Improve exception handling throughout `ui_manager.py`. Currently, exceptions in the input loop may cause the program to crash. Add try/except blocks to catch and log exceptions gracefully, ensuring the terminal is properly restored even on errors.

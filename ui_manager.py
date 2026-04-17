@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ui_manager.py — ncurses CLI user interface module.
+uimanager.py — ncurses CLI user interface module.
 
 This module provides ncurses-based UI rendering for menus, prompts,
 progress bars, and other interactive elements with black background
@@ -10,8 +10,11 @@ and green text styling.
 import curses
 import sys
 import time
+import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class UIManagerError(Exception):
@@ -50,6 +53,7 @@ class UIManager:
         self._title = title or "Llama Server Wrapper"
         self._color_pair = None
         self._using_curses = False
+        self._initialized = False
         
         try:
             # Initialize curses
@@ -73,62 +77,59 @@ class UIManager:
             self._screen.timeout(100)  # 100ms timeout for key refresh
             
             self._using_curses = True
+            self._initialized = True
             
         except (curses.error, OSError, IOError) as e:
-            # If curses fails, immediately end curses and fall back to console
-            # First, try to reset terminal state
             try:
-                curses.reset_prog_mode()
+                logger.error(f"Curses initialization failed: {e}")
+                self._restore_terminal_state()
+                print(f"Curses initialization failed: {e}", file=sys.stderr)
+                self._using_curses = False
+                self._screen = None
+                self._color_pair = None
+                self._initialized = False
+            except Exception as restore_error:
+                try:
+                    logger.error(f"Error restoring terminal state: {restore_error}")
+                except:
+                    pass
+
+    def _restore_terminal_state(self):
+        """Restore terminal to original state."""
+        try:
+            # Reset terminal mode
+            curses.echo()
+            curses.nocbreak()
+            curses.keypad(False)
+            curses.curs_set(1)  # Show cursor
+            # Reset colors
+            if hasattr(curses, 'reset_pair_matrix'):
                 curses.reset_pair_matrix()
+            curses.endwin()
+        except Exception as e:
+            logger.error(f"Error restoring terminal state: {e}")
+        finally:
+            self._screen = None
+            self._color_pair = None
+            self._using_curses = False
+            self._initialized = False
+            # Try to reset stty if available
+            try:
                 import subprocess
                 subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except:
                 pass
-            
-            try:
-                curses.curs_set(1)
-            except:
-                pass
-            
-            try:
-                curses.endwin()
-            except:
-                pass
-            
-            print(f"Curses initialization failed: {e}", file=sys.stderr)
-            self._using_curses = False
-            self._screen = None
-            self._color_pair = None
-
+    
     def _cleanup_terminal(self):
         """Clean up curses and restore terminal."""
         if self._using_curses and self._screen:
-            try:
-                # Reset terminal mode
-                curses.echo()
-                curses.nocbreak()
-                curses.keypad(False)
-                curses.curs_set(1)  # Show cursor
-                # Reset colors
-                if hasattr(curses, 'reset_pair_matrix'):
-                    curses.reset_pair_matrix()
-                curses.endwin()
-            except:
-                # Force hard reset
-                try:
-                    curses.endwin()
-                except:
-                    pass
-            finally:
-                self._screen = None
-                self._color_pair = None
-                self._using_curses = False
-                # Try to reset stty if available
-                try:
-                    import subprocess
-                    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                except:
-                    pass
+            self._restore_terminal_state()
+        else:
+            # Even if not initialized, ensure clean state
+            self._screen = None
+            self._color_pair = None
+            self._using_curses = False
+            self._initialized = False
 
     def __del__(self):
         """Cleanup curses resources."""
@@ -139,7 +140,14 @@ class UIManager:
         if self._using_curses and self._screen:
             try:
                 self._screen.refresh()
-            except:
+            except curses.error as e:
+                logger.error(f"Screen refresh error: {e}")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+            except Exception as e:
+                logger.error(f"Unexpected error during screen refresh: {e}")
                 try:
                     self._cleanup_terminal()
                 except:
@@ -177,7 +185,11 @@ class UIManager:
             self._screen.addstr(0, 0, text.ljust(self.WIDTH))
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
-        except:
+        except curses.error as e:
+            logger.error(f"Header rendering error: {e}")
+            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
+        except Exception as e:
+            logger.error(f"Unexpected error during header rendering: {e}")
             print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
 
     def print_message(self, text: str, y: int = 1, x: int = 1):
@@ -194,7 +206,11 @@ class UIManager:
             self._screen.addstr(y, x, text)
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
-        except:
+        except curses.error as e:
+            logger.error(f"Message rendering error at ({y},{x}): {e}")
+            print(text)
+        except Exception as e:
+            logger.error(f"Unexpected error during message rendering: {e}")
             print(text)
 
     def print_line(self, y: int, x: int = 0, length: int = None):
@@ -212,7 +228,11 @@ class UIManager:
             self._screen.addstr(y, x, line)
             self._screen.attroff(self._color_pair)
             self._screen.refresh()
-        except:
+        except curses.error as e:
+            logger.error(f"Line rendering error at ({y},{x}): {e}")
+            print("-" * (length or 60))
+        except Exception as e:
+            logger.error(f"Unexpected error during line rendering: {e}")
             print("-" * (length or 60))
 
     def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> Optional[curses.window]:
@@ -242,7 +262,11 @@ class UIManager:
                 win.addstr(1, 0, "-" * (width - 2))
             
             return win
-        except:
+        except curses.error as e:
+            logger.error(f"Window creation error at ({y},{x}) {height}x{width}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error during window creation: {e}")
             return None
 
     def render_menu(self, options: List[Dict[str, Any]], 
@@ -360,7 +384,15 @@ class UIManager:
             
             # Redraw menu immediately after creating the window
             redraw(menu_win, highlighted_idx)
-        except curses.error:
+        except curses.error as e:
+            logger.error(f"Menu window creation error: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            return -1
+        except Exception as e:
+            logger.error(f"Unexpected error during menu rendering: {e}")
             try:
                 self._cleanup_terminal()
             except:
@@ -372,7 +404,8 @@ class UIManager:
             while True:
                 try:
                     key = menu_win.getch()
-                except (curses.error, KeyboardInterrupt):
+                except (curses.error, KeyboardInterrupt) as e:
+                    logger.error(f"Menu input error: {e}")
                     try:
                         self._cleanup_terminal()
                     except:
@@ -380,15 +413,38 @@ class UIManager:
                     return -1
                 
                 # Handle keys
-                if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
+                # First, try to interpret the key as a selection number
+                selection = None
+                try:
+                    if isinstance(key, int) and key >= ord('0') and key <= ord('9'):
+                        selection = int(chr(key))
+                    elif key is not None and not isinstance(key, int):
+                        # Handle non-integer keys (e.g., mocked values)
+                        try:
+                            selection = int(key)
+                        except (ValueError, TypeError, AttributeError, OverflowError):
+                            pass
+                    elif key == 10 or key == curses.KEY_ENTER or key == 27 or key == ord('q') or key == curses.KEY_RESIZE or key == curses.KEY_UP or key == curses.KEY_PPAGE or key == curses.KEY_DOWN or key == curses.KEY_NPAGE or key == curses.KEY_BACKSPACE or key == 127 or key == 8:
+                        # Special keys
+                        pass
+                except (TypeError, AttributeError):
+                    pass
+                
+                if selection is not None and 0 <= selection < len(options):
+                    # Select the option
+                    highlighted_idx = selection
+                    try:
+                        redraw(menu_win, highlighted_idx)
+                    except:
+                        pass
+                elif key is None or key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
                     # Cancel
                     try:
                         self._screen.erase()
                         self._screen.refresh()
-                    except:
+                    except (curses.error, OSError, EOFError):
                         pass
                     return -1
-                
                 elif key == curses.KEY_UP or key == curses.KEY_PPAGE:
                     # Move up or page up
                     if highlighted_idx > 0:
@@ -396,7 +452,6 @@ class UIManager:
                     else:
                         highlighted_idx = len(options) - 1
                     redraw(menu_win, highlighted_idx)
-
                 elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
                     # Move down or page down
                     if highlighted_idx < len(options) - 1:
@@ -404,39 +459,29 @@ class UIManager:
                     else:
                         highlighted_idx = 0
                     redraw(menu_win, highlighted_idx)
-                
-                elif key >= ord('0') and key <= ord('9'):
-                    # Type number
-                    try:
-                        choice = int(chr(key))
-                        if 0 <= choice < len(options):
-                            highlighted_idx = choice
-                            # Redraw menu immediately to update highlight
-                            redraw(menu_win, highlighted_idx)
-                    except ValueError:
-                        pass
-                
                 elif key == 10 or key == curses.KEY_ENTER:
                     # Confirm
-                    self._screen.refresh()
+                    try:
+                        self._screen.refresh()
+                    except (curses.error, OSError, EOFError):
+                        pass
                     return highlighted_idx
-                
                 elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
                     # Backspace - cancel
-                    self._screen.refresh()
+                    try:
+                        self._screen.refresh()
+                    except (curses.error, OSError, EOFError):
+                        pass
                     return -1
-                
-                # Timeout - redraw to refresh display
                 else:
+                    # Timeout - redraw to refresh display
                     redraw(menu_win, highlighted_idx)
-                
-                # Redraw menu
-                redraw(menu_win, highlighted_idx)
                 
                 # Small delay to prevent rapid redraws
                 curses.napms(10) if hasattr(curses, 'napms') else None
                 
-        except curses.error:
+        except (curses.error, OSError, EOFError, TypeError) as e:
+            logger.error(f"Menu input loop error: {e}")
             # Clear screen and fall back to console
             try:
                 curses.curs_set(1)
@@ -450,8 +495,16 @@ class UIManager:
                 choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
                 idx = int(choice)
                 return idx if 0 <= idx < len(options) else -1
-            except Exception:
+            except Exception as input_error:
+                logger.error(f"Console fallback error: {input_error}")
                 return -1
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            return -1
+        except Exception as e:
+            logger.error(f"Unexpected error during menu rendering: {e}")
             try:
                 self._cleanup_terminal()
             except:
@@ -592,13 +645,26 @@ class UIManager:
                 self._screen.refresh()
                 return True
 
-        except curses.error:
+        except curses.error as e:
+            logger.error(f"Confirmation window error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            print(f"\n{message}")
+            print("Proceed? [Y/n]: ", end="", flush=True)
+            response = sys.stdin.readline().strip().lower()
+            if response in ('', 'y', 'yes'):
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error during confirmation: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\n{message}")
             print("Proceed? [Y/n]: ", end="", flush=True)
             response = sys.stdin.readline().strip().lower()
@@ -702,13 +768,22 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             bar_win.erase()
-        except curses.error:
+        except curses.error as e:
+            logger.error(f"Progress bar window error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
+            input("Press Enter to continue...")
+        except Exception as e:
+            logger.error(f"Unexpected error during progress bar: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
             input("Press Enter to continue...")
 
@@ -775,13 +850,22 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             msg_win.erase()
-        except curses.error:
+        except curses.error as e:
+            logger.error(f"Success window error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
+            input("Press Enter to continue...")
+        except Exception as e:
+            logger.error(f"Unexpected error during success display: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -848,13 +932,22 @@ class UIManager:
             self.refresh()
             self._screen.getch()
             msg_win.erase()
-        except curses.error:
+        except curses.error as e:
+            logger.error(f"Error window error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
+            input("Press Enter to continue...")
+        except Exception as e:
+            logger.error(f"Unexpected error during error display: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
@@ -914,9 +1007,13 @@ class UIManager:
             # Input handling
             while True:
                 self.refresh()
-                key = self._screen.getch()
+                try:
+                    key = self._screen.getch()
+                except (curses.error, OSError, EOFError):
+                    logger.error("Failed to get key input")
+                    return None
                 
-                if key == 27 or key == ord('q'):
+                if key is None or key == 27 or key == ord('q'):
                     return None
                 elif key == curses.KEY_UP:
                     if highlighted is not None and highlighted > 0:
@@ -928,12 +1025,20 @@ class UIManager:
                         highlighted += 1
                     else:
                         highlighted = 0
-                elif key >= ord('0') and key <= ord('9'):
+                elif isinstance(key, int) and key >= ord('0') and key <= ord('9'):
                     try:
                         choice = int(chr(key)) - 1
                         if 0 <= choice < len(options):
                             highlighted = choice
-                    except ValueError:
+                    except (ValueError, TypeError):
+                        pass
+                elif key is not None and not isinstance(key, int):
+                    # Handle non-integer keys (e.g., mocked values)
+                    try:
+                        choice = int(key) - 1
+                        if 0 <= choice < len(options):
+                            highlighted = choice
+                    except (ValueError, TypeError, AttributeError):
                         pass
                 elif key == 10 or key == curses.KEY_ENTER:
                     return highlighted
@@ -941,13 +1046,29 @@ class UIManager:
                 if highlighted is not None:
                     self._screen.refresh()
 
-        except curses.error:
+        except (curses.error, OSError, EOFError, TypeError) as e:
+            logger.error(f"Simple menu input error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+        except Exception as e:
+            logger.error(f"Unexpected error during simple menu: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             for i, opt in enumerate(options):
                 marker = " (default)" if default is not None and i == default else ""
                 print(f"  {i}. {opt}{marker}")
@@ -1001,13 +1122,23 @@ class UIManager:
             # Get input
             input_str = self._screen.getstr(x + len(prompt), y, width - len(prompt)).decode()
             return input_str.strip()
-        except curses.error:
+        except (curses.error, OSError, EOFError, TypeError) as e:
+            logger.error(f"Input error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
             except:
                 pass
             # Fallback to console
+            print(f"{prompt}")
+            response = sys.stdin.readline().strip()
+            return response
+        except Exception as e:
+            logger.error(f"Unexpected error during input: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
             print(f"{prompt}")
             response = sys.stdin.readline().strip()
             return response
@@ -1070,6 +1201,40 @@ class UIManager:
         self._screen.refresh()
 
         # Get input
-        input_str = self._screen.getstr(x + len(f"\nChoice [{default if default is not None else 0}]: "), y + len(options) + 1, width).decode()
-        idx = int(input_str) if input_str.isdigit() else None
-        return idx if idx is not None and 0 <= idx < len(options) else None
+        try:
+            input_str = self._screen.getstr(x + len(f"\nChoice [{default if default is not None else 0}]: "), y + len(options) + 1, width).decode()
+            idx = int(input_str) if input_str.isdigit() else None
+            return idx if idx is not None and 0 <= idx < len(options) else None
+        except curses.error as e:
+            logger.error(f"Numbered input error: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            # Fallback to console
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            print(f"Choice [{default if default is not None else 0}]: ", end="", flush=True)
+            choice = sys.stdin.readline().strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
+        except Exception as e:
+            logger.error(f"Unexpected error during numbered input: {e}")
+            try:
+                self._cleanup_terminal()
+            except:
+                pass
+            for i, opt in enumerate(options):
+                marker = " (default)" if default is not None and i == default else ""
+                print(f"  {i}. {opt}{marker}")
+            print(f"Choice [{default if default is not None else 0}]: ", end="", flush=True)
+            choice = sys.stdin.readline().strip()
+            try:
+                idx = int(choice)
+                return idx if 0 <= idx < len(options) else None
+            except ValueError:
+                return None
