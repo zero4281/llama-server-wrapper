@@ -115,10 +115,12 @@ The confirmation tests try to read from `sys.stdin` but don't mock it properly. 
     - **Fixed in:** `ui_manager.py` line 155-160
     - **Status:** Completed - Added error handling with fallback to `curses.A_BOLD`
 
-2. **Fix menu navigation redraw**
-   - Call `redraw(menu_win, highlighted_idx)` immediately after arrow key navigation
-   - Call `redraw(menu_win, highlighted_idx)` immediately after number input
-   - Ensure the visual update happens in real-time
+2. **Fix menu navigation redraw** ✅ FIXED
+    - Added `redraw(menu_win, highlighted_idx)` after arrow key navigation (KEY_UP, KEY_PPAGE)
+    - Added `redraw(menu_win, highlighted_idx)` after page key navigation (KEY_DOWN, KEY_NPAGE)
+    - Visual update now happens in real-time
+    - **Fixed in:** `ui_manager.py` lines 392-404
+    - **Status:** Completed - Arrow keys and page keys now properly redraw the menu after navigation
 
 3. **Fix spinner animation**
    - Replace `curses.time()` with `int(time.time() / 100) % 4`

@@ -395,13 +395,15 @@ class UIManager:
                         highlighted_idx -= 1
                     else:
                         highlighted_idx = len(options) - 1
-                
+                    redraw(menu_win, highlighted_idx)
+
                 elif key == curses.KEY_DOWN or key == curses.KEY_NPAGE:
                     # Move down or page down
                     if highlighted_idx < len(options) - 1:
                         highlighted_idx += 1
                     else:
                         highlighted_idx = 0
+                    redraw(menu_win, highlighted_idx)
                 
                 elif key >= ord('0') and key <= ord('9'):
                     # Type number
