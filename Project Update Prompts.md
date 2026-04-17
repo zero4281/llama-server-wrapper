@@ -24,3 +24,19 @@ Read `./Requirements.md` and `./Plan.md`.  Read `./Tests/Tests.md` and `./Tests/
 
 ## Commit prompt
 If the project is on the main branch then create a new branch with the format: `[feature/bugfix]/[version]-[short-description]` (e.g. `feature/v1.1-user-confirmation-flows`).  If the project is already in a feature branch (not the main branch) then continue without creating a branch.  Check `git status`, use `git ls-files --others --exclude-standard` to find new files, then create a git commit message.  Make sure the commit message is only one sentence long.  Then commit the update and push the commit.
+
+## Create TODOs
+Read `./Requirements.md` and `./Plan.md`.
+Read `./Tests/Tests.md`.
+Read `./TODOs.md`.
+
+Don't do any work yet, just analysis.  Create or update `./TODOs.md` with enough detail about each TODO that the work can be picked up later.  Mark items as incomplete when they're added to the list.  Estimate the level of priority of each item.  Make sure to list any other items as dependencies for each TODO.
+
+Base the analysis on this request:
+
+## Complete TODO
+Read `./Requirements.md` and `./Plan.md`.
+Read `./Tests/Tests.md`.
+Read `./TODOs.md`.
+
+Create a list of items to work on from `./TODOs.md`.  Ignore items that are already marked as complete.  Ask the user which one to fix.  Make sure the list indicates the estimated priority and dependencies on other items in the list.  Once the user makes a selection delegate the work to @general with the context provided in `./TODOs.md` and this prompt (e.g. Read `./Requirements.md` and `./Plan.md`).  After the task is completed, mark the item status as complete in `./TODOs.md`.
