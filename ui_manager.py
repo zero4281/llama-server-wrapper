@@ -9,6 +9,7 @@ and green text styling.
 
 import curses
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -686,7 +687,7 @@ class UIManager:
             else:
                 # Spinner for indeterminate progress
                 spinner = ["◐", "◓", "◑", "◒"]
-                spinner_idx = int(curses.time() / 100) % 4
+                spinner_idx = int(time.time() / 100) % 4
                 
                 bar_win.attron(self._color_pair)
                 bar_win.addstr(2, 0, f"Downloading {Path(filename).name}... ({spinner[spinner_idx]})")
