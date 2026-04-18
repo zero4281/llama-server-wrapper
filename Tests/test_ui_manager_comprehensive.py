@@ -97,13 +97,14 @@ def test_init():
 
 def test_menu_navigation():
     """Test menu rendering and navigation."""
+    import curses
     options = [{'label': f'Option {i}'} for i in range(5)]
-    KEY_UP = 259
-    KEY_DOWN = 258
-    KEY_ENTER = 10
-    KEY_RESIZE = 328
-    KEY_PPAGE = 1000
-    KEY_NPAGE = 1001
+    KEY_UP = curses.KEY_UP
+    KEY_DOWN = curses.KEY_DOWN
+    KEY_ENTER = curses.KEY_ENTER
+    KEY_RESIZE = curses.KEY_RESIZE
+    KEY_PPAGE = curses.KEY_PPAGE
+    KEY_NPAGE = curses.KEY_NPAGE
     
     with patch('ui_manager.curses', MagicMock(spec=curses, **{
         'initscr': MagicMock(return_value=MagicMock()),
@@ -161,7 +162,8 @@ def test_menu_navigation():
 
 def test_confirmation():
     """Test confirmation prompts."""
-    KEY_ENTER = 10
+    import curses
+    KEY_ENTER = curses.KEY_ENTER
     
     with patch('ui_manager.curses', MagicMock(spec=curses, **{
         'initscr': MagicMock(return_value=MagicMock()),
@@ -203,7 +205,8 @@ def test_confirmation():
 
 def test_progress():
     """Test progress bar rendering."""
-    KEY_ENTER = 10
+    import curses
+    KEY_ENTER = curses.KEY_ENTER
     
     with patch('ui_manager.curses', MagicMock(spec=curses, **{
         'initscr': MagicMock(return_value=MagicMock()),
@@ -238,7 +241,8 @@ def test_progress():
 
 def test_styling():
     """Test color and styling requirements."""
-    KEY_DOWN = 258
+    import curses
+    KEY_DOWN = curses.KEY_DOWN
     
     with patch('ui_manager.curses', MagicMock(spec=curses, **{
         'initscr': MagicMock(return_value=MagicMock()),
@@ -288,7 +292,8 @@ def test_styling():
 
 def test_edge_cases():
     """Test edge cases and error handling."""
-    KEY_ENTER = 10
+    import curses
+    KEY_ENTER = curses.KEY_ENTER
     
     with patch('ui_manager.curses', MagicMock(spec=curses, **{
         'initscr': MagicMock(return_value=MagicMock()),

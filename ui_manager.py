@@ -16,6 +16,23 @@ from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Logging configuration
+UI_MANAGER_DEBUG = False
+UI_MANAGER_LOG_LEVEL = logging.DEBUG
+
+def _configure_logging():
+    """Configure logging for UIManager."""
+    if not logging.getLogger("ui_manager").handlers:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(UI_MANAGER_LOG_LEVEL)
+        logging.getLogger("ui_manager").setLevel(UI_MANAGER_LOG_LEVEL)
+
 
 class UIManagerError(Exception):
     """Base exception for UIManager errors."""
@@ -283,6 +300,8 @@ class UIManager:
         Returns:
             Selected option index, or -1 if cancelled
         """
+        start_time = time.time()
+        logger.info(f"render_menu entry: options_count={len(options)}, default={default}, highlighted={highlighted}")
         logger.debug(f"render_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
         
         # Console fallback
@@ -400,49 +419,39 @@ class UIManager:
             except:
                 pass
             return -1
-
         # Input loop
         try:
             logger.debug("Starting render_menu input loop")
             while True:
                 try:
                     key = menu_win.getch()
-                except (curses.error, KeyboardInterrupt) as e:
-                    logger.error(f"Menu input error: {e}")
-                    try:
-                        self._cleanup_terminal()
-                    except:
-                        pass
-                    return -1
+                except (curses.error, KeyboardInterrupt, OSError, EOFError) as e:
+                        logger.error(f"Menu getch() error: {e}")
+                        try:
+                            self._cleanup_terminal()
+                        except:
+                            pass
+                        return -1
                 
                 # Log the raw key value
-                logger.debug(f"Received key: {key} (type: {type(key).__name__})")
+                hex_str = f"0x{key:02x}" if isinstance(key, int) else "N/A"
+                logger.debug(f"Input loop iteration: key={key}, type={type(key).__name__}, hex={hex_str}")
                 
                 # Handle keys
                 # Handle numeric key input (0-9) for direct selection
-                if isinstance(key, int) and key >= ord('0') and key <= ord('9'):
+                # getch() can return None (EOF, terminal closed) or int for regular characters
+                if key is not None and isinstance(key, int) and key >= ord('0') and key <= ord('9'):
                     selection = int(chr(key))
                     logger.debug(f"Numeric key detected: {key} -> selection={selection}")
                     if 0 <= selection < len(options):
                         # Select the option
+                        old_highlighted = highlighted_idx
                         highlighted_idx = selection
-                        logger.debug(f"Selection confirmed: option {selection}")
+                        logger.debug(f"State change: highlighted_idx {old_highlighted} -> {highlighted_idx}")
                         try:
                             redraw(menu_win, highlighted_idx)
-                        except:
-                            pass
-                        continue
-                elif isinstance(key, str) and len(key) == 1 and key.isdecimal():
-                    selection = int(key)
-                    logger.debug(f"Numeric key detected (string): {key} -> selection={selection}")
-                    if 0 <= selection < len(options):
-                        # Select the option
-                        highlighted_idx = selection
-                        logger.debug(f"Selection confirmed: option {selection}")
-                        try:
-                            redraw(menu_win, highlighted_idx)
-                        except:
-                            pass
+                        except Exception as redraw_error:
+                            logger.error(f"Redraw failed: {redraw_error}")
                         continue
                 
                 # Handle navigation and control keys
@@ -454,7 +463,10 @@ class UIManager:
                     else:
                         highlighted_idx = len(options) - 1  # Wrap to last
                     logger.debug(f"Navigation: UP key, {old_hi} -> {highlighted_idx}")
-                    redraw(menu_win, highlighted_idx)
+                    try:
+                        redraw(menu_win, highlighted_idx)
+                    except Exception as redraw_error:
+                        logger.error(f"Redraw failed after UP key: {redraw_error}")
                     continue
                 
                 if key == curses.KEY_PPAGE:
@@ -468,7 +480,10 @@ class UIManager:
                     else:
                         highlighted_idx = new_idx
                     logger.debug(f"Navigation: PAGE UP key, {old_hi} -> {highlighted_idx}")
-                    redraw(menu_win, highlighted_idx)
+                    try:
+                        redraw(menu_win, highlighted_idx)
+                    except Exception as redraw_error:
+                        logger.error(f"Redraw failed after PAGE UP key: {redraw_error}")
                     continue
                 
                 if key == curses.KEY_DOWN:
@@ -479,7 +494,10 @@ class UIManager:
                     else:
                         highlighted_idx = 0  # Wrap to first
                     logger.debug(f"Navigation: DOWN key, {old_hi} -> {highlighted_idx}")
-                    redraw(menu_win, highlighted_idx)
+                    try:
+                        redraw(menu_win, highlighted_idx)
+                    except Exception as redraw_error:
+                        logger.error(f"Redraw failed after DOWN key: {redraw_error}")
                     continue
                 
                 if key == curses.KEY_NPAGE:
@@ -493,12 +511,17 @@ class UIManager:
                         # Wrap to beginning
                         highlighted_idx = new_idx % len(options)
                     logger.debug(f"Navigation: PAGE DOWN key, {old_hi} -> {highlighted_idx}")
-                    redraw(menu_win, highlighted_idx)
+                    try:
+                        redraw(menu_win, highlighted_idx)
+                    except Exception as redraw_error:
+                        logger.error(f"Redraw failed after PAGE DOWN key: {redraw_error}")
                     continue
                 
-                if key == 343 or key == curses.KEY_ENTER:
-                    # Confirm selection
-                    logger.debug(f"Confirmation requested: highlighted={highlighted_idx}")
+                if key in (curses.KEY_ENTER, 10, 13):
+                    # Confirm selection (Enter key - various codes)
+                    logger.debug(f"Confirmation requested: highlighted={highlighted_idx}, options={len(options)}")
+                    selected_option = options[highlighted_idx] if 0 <= highlighted_idx < len(options) else None
+                    logger.debug(f"Selected option: {selected_option}")
                     try:
                         self._screen.refresh()
                     except (curses.error, OSError, EOFError):
@@ -507,7 +530,7 @@ class UIManager:
                 
                 if key == 27 or key == ord('q') or key == curses.KEY_RESIZE:
                     # Cancel
-                    logger.debug(f"Cancellation requested: key={key}")
+                    logger.debug(f"Cancellation requested: key={key}, current_highlighted={highlighted_idx}")
                     try:
                         self._screen.erase()
                         self._screen.refresh()
@@ -517,17 +540,20 @@ class UIManager:
                 
                 if key == curses.KEY_BACKSPACE or key == 127 or key == 8:
                     # Backspace - cancel
-                    logger.debug(f"Backspace received: cancelling")
+                    logger.debug(f"Backspace received: cancelling, current_highlighted={highlighted_idx}")
                     try:
                         self._screen.refresh()
                     except (curses.error, OSError, EOFError):
                         pass
                     return -1
-                
+
                 # Timeout - redraw to refresh display
-                logger.debug(f"Timeout event, current highlighted={highlighted_idx}")
-                redraw(menu_win, highlighted_idx)
-                
+                logger.debug(f"Timeout event: highlighted={highlighted_idx}, elapsed_time={time.time():.2f}")
+                try:
+                    redraw(menu_win, highlighted_idx)
+                except Exception as redraw_error:
+                    logger.error(f"Redraw failed on timeout: {redraw_error}")
+
                 # Small delay to prevent rapid redraws
                 curses.napms(10) if hasattr(curses, 'napms') else None
                 
@@ -574,7 +600,11 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled
         """
+        start_time = time.time()
+        result = None
+        logger.info(f"render_confirmation entry: message_len={len(message)}, default={default}")
         logger.debug(f"render_confirmation called with message={message[:50]}..., default={default}")
+        
         # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -663,8 +693,28 @@ class UIManager:
             while True:
                 self._screen.refresh()
                 
-                key = prompt_win.getch()
-                logger.debug(f"Confirmation: received key={key}")
+                try:
+                    key = prompt_win.getch()
+                except (curses.error, OSError, EOFError) as e:
+                    logger.error(f"Confirmation getch() error: {e}")
+                    try:
+                        self._cleanup_terminal()
+                    except:
+                        pass
+                    # Fallback to console
+                    print(f"\n{message}")
+                    print("Proceed? [Y/n]: ", end="", flush=True)
+                    response = sys.stdin.readline().strip().lower()
+                
+                # Handle response from fallback
+                if response in ('', 'y', 'yes'):
+                    return True
+                
+                # Handle key input
+                if key is None:
+                    # EOF/timeout - assume default (yes)
+                    logger.debug("Confirmation: timeout, assuming default yes")
+                    return True
                 
                 if key == 27 or key == curses.KEY_RESIZE:
                     # Cancel
@@ -672,28 +722,28 @@ class UIManager:
                     self._screen.erase()
                     return False
                 
-                elif key == 10 or key == curses.KEY_ENTER:  # Enter
+                elif key in (10, 13, curses.KEY_ENTER):  # Enter
                     # Confirm (default yes)
                     logger.debug("Confirmation: ENTER pressed, confirming")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
-                elif key == ord('y') or key == ord('Y'):
+                elif key in (ord('y'), ord('Y')):
                     # Confirm
                     logger.debug("Confirmation: 'y' pressed, confirming")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
-                elif key == ord('n') or key == ord('N'):
+                elif key in (ord('n'), ord('N')):
                     # Cancel
                     logger.debug("Confirmation: 'n' pressed, cancelling")
                     self._screen.erase()
                     self._screen.refresh()
                     return False
                 
-                elif key >= 0 and key < 127:  # Regular character input
+                elif 0 <= key < 127:  # Regular character input
                     # Handle character input (e.g., typing 'y' or 'n')
                     logger.debug(f"Confirmation: character input received: {chr(key)}")
                     self._screen.erase()
@@ -705,7 +755,7 @@ class UIManager:
                 self._screen.erase()
                 self._screen.refresh()
                 return True
-
+            return False
         except curses.error as e:
             logger.error(f"Confirmation window error: {e}")
             # If curses fails during input, clean up and return
@@ -732,6 +782,9 @@ class UIManager:
             if response in ('', 'y', 'yes'):
                 return True
             return False
+        finally:
+            elapsed = time.time() - start_time
+            logger.debug(f"render_confirmation exit: returned={result}, elapsed={elapsed:.2f}s")
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
                           percent: Optional[float] = None) -> None:
@@ -744,6 +797,8 @@ class UIManager:
             total: Total bytes
             percent: Optional pre-calculated percentage
         """
+        start_time = time.time()
+        logger.info(f"render_progress_bar entry: file={Path(filename).name}, current={current:,}, total={total:,}")
         if percent is not None:
             logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}, percent={percent:.1f}%")
         else:
@@ -832,7 +887,18 @@ class UIManager:
             # Wait for key
             logger.debug("Progress bar: waiting for key press")
             self.refresh()
-            key = self._screen.getch()
+            try:
+                key = self._screen.getch()
+            except (curses.error, OSError, EOFError) as e:
+                logger.error(f"Progress bar getch() error: {e}")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                # Fallback to console
+                print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
+                input("Press Enter to continue...")
+                key = -1  # Signal to break loop
             logger.debug(f"Progress bar: key received={key}")
             bar_win.erase()
         except curses.error as e:
@@ -916,7 +982,17 @@ class UIManager:
             
             # Wait for key
             self.refresh()
-            self._screen.getch()
+            try:
+                self._screen.getch()
+            except (curses.error, OSError, EOFError) as e:
+                logger.error(f"Success getch() error: {e}")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                # Fallback to console
+                print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
+                input("Press Enter to continue...")
             msg_win.erase()
         except curses.error as e:
             logger.error(f"Success window error: {e}")
@@ -999,7 +1075,17 @@ class UIManager:
             
             # Wait for key
             self.refresh()
-            self._screen.getch()
+            try:
+                self._screen.getch()
+            except (curses.error, OSError, EOFError) as e:
+                logger.error(f"Error getch() error: {e}")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                # Fallback to console
+                print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
+                input("Press Enter to continue...")
             msg_win.erase()
         except curses.error as e:
             logger.error(f"Error window error: {e}")
@@ -1079,9 +1165,22 @@ class UIManager:
                 self.refresh()
                 try:
                     key = self._screen.getch()
-                except (curses.error, OSError, EOFError):
-                    logger.error("Failed to get key input")
-                    return None
+                except (curses.error, OSError, EOFError) as e:
+                    logger.error(f"print_simple_menu getch() error: {e}")
+                    try:
+                        self._cleanup_terminal()
+                    except:
+                        pass
+                    # Fallback to console
+                    for i, opt in enumerate(options):
+                        marker = " (default)" if default is not None and i == default else ""
+                        print(f"  {i}. {opt}{marker}")
+                    choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
+                    try:
+                        idx = int(choice)
+                        return idx if 0 <= idx < len(options) else None
+                    except ValueError:
+                        return None
                 
                 if key is None or key == 27 or key == ord('q'):
                     return None
@@ -1194,7 +1293,7 @@ class UIManager:
             input_str = self._screen.getstr(x + len(prompt), y, width - len(prompt)).decode()
             return input_str.strip()
         except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Input error: {e}")
+            logger.error(f"get_input error: {e}")
             # If curses fails during input, clean up and return
             try:
                 self._cleanup_terminal()
@@ -1205,7 +1304,7 @@ class UIManager:
             response = sys.stdin.readline().strip()
             return response
         except Exception as e:
-            logger.error(f"Unexpected error during input: {e}")
+            logger.error(f"Unexpected error during get_input: {e}")
             try:
                 self._cleanup_terminal()
             except:
@@ -1277,8 +1376,8 @@ class UIManager:
             input_str = self._screen.getstr(x + len(f"\nChoice [{default if default is not None else 0}]: "), y + len(options) + 1, width).decode()
             idx = int(input_str) if input_str.isdigit() else None
             return idx if idx is not None and 0 <= idx < len(options) else None
-        except curses.error as e:
-            logger.error(f"Numbered input error: {e}")
+        except (curses.error, OSError, EOFError, TypeError) as e:
+            logger.error(f"get_numbered_input error: {e}")
             try:
                 self._cleanup_terminal()
             except:
@@ -1295,7 +1394,7 @@ class UIManager:
             except ValueError:
                 return None
         except Exception as e:
-            logger.error(f"Unexpected error during numbered input: {e}")
+            logger.error(f"Unexpected error during get_numbered_input: {e}")
             try:
                 self._cleanup_terminal()
             except:
