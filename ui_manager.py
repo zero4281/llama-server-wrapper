@@ -18,20 +18,34 @@ logger = logging.getLogger(__name__)
 
 # Logging configuration
 UI_MANAGER_DEBUG = False
-UI_MANAGER_LOG_LEVEL = logging.DEBUG
+UI_MANAGER_LOG_LEVEL = logging.INFO
+
+
+def enable_debug_mode():
+    """Enable debug logging for UIManager."""
+    global UI_MANAGER_DEBUG, UI_MANAGER_LOG_LEVEL
+    UI_MANAGER_DEBUG = True
+    UI_MANAGER_LOG_LEVEL = logging.DEBUG
+    logger.setLevel(logging.DEBUG)
+    # Re-add handler with debug level
+    if logger.handlers:
+        handler = logger.handlers[0]
+        handler.setLevel(logging.DEBUG)
+    else:
+        _configure_logging()
 
 def _configure_logging():
     """Configure logging for UIManager."""
-    if not logging.getLogger("ui_manager").handlers:
+    ui_logger = logging.getLogger("ui_manager")
+    if not ui_logger.handlers:
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%H:%M:%S'
         )
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(UI_MANAGER_LOG_LEVEL)
-        logging.getLogger("ui_manager").setLevel(UI_MANAGER_LOG_LEVEL)
+        ui_logger.addHandler(handler)
+        ui_logger.setLevel(UI_MANAGER_LOG_LEVEL)
 
 
 class UIManagerError(Exception):
@@ -301,8 +315,15 @@ class UIManager:
             Selected option index, or -1 if cancelled
         """
         start_time = time.time()
-        logger.info(f"render_menu entry: options_count={len(options)}, default={default}, highlighted={highlighted}")
-        logger.debug(f"render_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
+        logger.info(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}")
+        
+        # Ensure terminal is in proper state before rendering
+        if self._using_curses:
+            try:
+                curses.setupterm()
+            except curses.error:
+                logger.warning(f"curses.setupterm() failed, falling back to console mode")
+                return self._fallback_console_menu(options, default, highlighted)
         
         # Console fallback
         if not self._using_curses or not self._screen:
@@ -325,18 +346,13 @@ class UIManager:
                 if desc:
                     print(f"     {desc}")
             
-            # Prompt with timeout
+            # Prompt
             print(f"Choice [{highlighted if highlighted is not None else 0}]: ", end="", flush=True)
             try:
-                import select
                 if sys.stdin.isatty():
-                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                    if ready:
-                        choice_str = sys.stdin.readline().strip()
-                    else:
-                        choice_str = ""
-                else:
                     choice_str = sys.stdin.readline().strip()
+                else:
+                    choice_str = ""
             except:
                 choice_str = ""
             
@@ -367,6 +383,7 @@ class UIManager:
         # Define redraw function
         def redraw(win, hi_idx):
             try:
+                logger.debug(f"Redraw called: win={win}, hi_idx={hi_idx}, options_count={len(options)}")
                 win.erase()
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
@@ -395,16 +412,31 @@ class UIManager:
                 truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
                 win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
                 win.refresh()
-            except curses.error:
-                self._screen.refresh()
+                logger.debug(f"Redraw completed successfully")
+            except curses.error as e:
+                logger.error(f"curses.error during redraw: {e}")
+                try:
+                    self._screen.refresh()
+                except:
+                    pass
+            except Exception as e:
+                logger.error(f"Unexpected error during redraw: {e}")
+                raise
 
         try:
+            logger.debug(f"Creating menu window: size={menu_height}x{menu_width}, pos=({y_center},{x_center})")
             menu_win = curses.newwin(menu_height, menu_width, y_center, x_center)
+            logger.debug(f"Window created: {menu_win}")
+            
             menu_win.box()
             menu_win.keypad(True)
             
-            # Redraw menu immediately after creating the window
+            logger.debug(f"Redrawing menu with highlighted index: {highlighted_idx}")
             redraw(menu_win, highlighted_idx)
+            logger.debug(f"Menu redraw completed")
+            
+            # Log menu state for debugging
+            logger.debug(f"Menu initialized: options_count={len(options)}, default={default}, highlighted={highlighted_idx}")
         except curses.error as e:
             logger.error(f"Menu window creation error: {e}")
             try:
@@ -433,26 +465,92 @@ class UIManager:
                             pass
                         return -1
                 
-                # Log the raw key value
-                hex_str = f"0x{key:02x}" if isinstance(key, int) else "N/A"
-                logger.debug(f"Input loop iteration: key={key}, type={type(key).__name__}, hex={hex_str}")
+                # Log the raw key value with additional details for debugging
+                if key is not None:
+                    if isinstance(key, int):
+                        # Determine key type for better logging
+                        key_type = "UNKNOWN"
+                        key_name = ""
+                        
+                        # Check for known key codes first
+                        if key in (curses.KEY_UP, 259):
+                            key_type = "KEY_UP"
+                            key_name = "UP"
+                        elif key in (curses.KEY_DOWN, 258):
+                            key_type = "KEY_DOWN"
+                            key_name = "DOWN"
+                        elif key in (curses.KEY_LEFT, 260):
+                            key_type = "KEY_LEFT"
+                            key_name = "LEFT"
+                        elif key in (curses.KEY_RIGHT, 261):
+                            key_type = "KEY_RIGHT"
+                            key_name = "RIGHT"
+                        elif key in (curses.KEY_ENTER, 343, 10, 13):
+                            key_type = "KEY_ENTER"
+                            key_name = "ENTER"
+                        elif key in (27, curses.KEY_RESIZE, 410):
+                            key_type = "CANCEL_KEY"
+                            key_name = "ESC/RESIZE"
+                        elif key in (curses.KEY_PPAGE, 339):
+                            key_type = "KEY_PPAGE"
+                            key_name = "PAGE_UP"
+                        elif key in (curses.KEY_NPAGE, 338):
+                            key_type = "KEY_NPAGE"
+                            key_name = "PAGE_DOWN"
+                        elif key in (curses.KEY_BACKSPACE, 263, 127, 8):
+                            key_type = "BACKSPACE"
+                            key_name = "BACKSPACE"
+                        
+                        # Check for numeric keys (0-9) - ASCII codes 48-57
+                        elif key >= ord('0') and key <= ord('9'):
+                            key_type = "NUMERIC"
+                            key_name = f"DIGIT({chr(key)})"
+                            selection = int(chr(key))
+                            if 0 <= selection < len(options):
+                                old_highlighted = highlighted_idx
+                                highlighted_idx = selection
+                                logger.debug(f"State change: highlighted_idx {old_highlighted} -> {highlighted_idx}")
+                                try:
+                                    redraw(menu_win, highlighted_idx)
+                                except Exception as redraw_error:
+                                    logger.error(f"Redraw failed after numeric key {key_name}: {redraw_error}")
+                                continue
+                        
+                        # Check for character keys (printable ASCII)
+                        elif 32 <= key < 127:
+                            key_type = "CHAR"
+                            key_name = f"'{chr(key)}'"
+                        
+                        # For unknown keys, use hex representation
+                        else:
+                            char_repr = chr(key) if 32 <= key < 127 else f'0x{key:02X}'
+                            key_type = f"UNKNOWN({key})"
+                            key_name = char_repr
+                        
+                        logger.debug(f"Input loop iteration: key={key}, type={type(key).__name__}, key_type={key_type}, key_name={key_name}, hex=0x{key:02X}")
+                    else:
+                        logger.debug(f"Input loop iteration: key={key}, type={type(key).__name__}")
+                else:
+                    logger.debug(f"Input loop iteration: key=None (EOF/timeout)")
                 
                 # Handle keys
                 # Handle numeric key input (0-9) for direct selection
                 # getch() can return None (EOF, terminal closed) or int for regular characters
-                if key is not None and isinstance(key, int) and key >= ord('0') and key <= ord('9'):
-                    selection = int(chr(key))
-                    logger.debug(f"Numeric key detected: {key} -> selection={selection}")
-                    if 0 <= selection < len(options):
-                        # Select the option
-                        old_highlighted = highlighted_idx
-                        highlighted_idx = selection
-                        logger.debug(f"State change: highlighted_idx {old_highlighted} -> {highlighted_idx}")
-                        try:
-                            redraw(menu_win, highlighted_idx)
-                        except Exception as redraw_error:
-                            logger.error(f"Redraw failed: {redraw_error}")
-                        continue
+                # Already handled above for known numeric key codes, but also check for any ASCII digit
+                if key is not None and isinstance(key, int):
+                    # Double-check for numeric keys (defensive programming)
+                    if ord('0') <= key <= ord('9'):
+                        selection = int(chr(key))
+                        logger.debug(f"Numeric key detected: key={key} -> selection={selection}")
+                        if 0 <= selection < len(options):
+                            old_highlighted = highlighted_idx
+                            highlighted_idx = selection
+                            logger.debug(f"State change: highlighted_idx {old_highlighted} -> {highlighted_idx}")
+                            try:
+                                redraw(menu_win, highlighted_idx)
+                            except Exception as redraw_error:
+                                logger.error(f"Redraw failed after numeric key: {redraw_error}")
+                            continue
                 
                 # Handle navigation and control keys
                 if key == curses.KEY_UP:
@@ -548,7 +646,6 @@ class UIManager:
                     return -1
 
                 # Timeout - redraw to refresh display
-                logger.debug(f"Timeout event: highlighted={highlighted_idx}, elapsed_time={time.time():.2f}")
                 try:
                     redraw(menu_win, highlighted_idx)
                 except Exception as redraw_error:
@@ -690,9 +787,34 @@ class UIManager:
 
             # Input handling
             logger.debug("Starting confirmation input loop")
+            
+            # Define redraw function
+            def confirm_redraw():
+                try:
+                    prompt_win.erase()
+                    white_attr = self._get_white_attr()
+                    if white_attr is not None:
+                        prompt_win.attron(white_attr)
+                        prompt_win.addstr(0, 1, "Confirm".center(msg_width - 2))
+                        prompt_win.attroff(white_attr)
+                    prompt_win.addstr(1, 0, "-" * (msg_width - 2))
+                    white_attr = self._get_white_attr()
+                    if white_attr is not None:
+                        prompt_win.attron(white_attr)
+                        truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
+                        prompt_win.addstr(2, 0, truncated_msg)
+                        prompt_win.attroff(white_attr)
+                    prompt_win.attron(curses.A_REVERSE | curses.A_BOLD)
+                    prompt_win.addstr(3, 1, "Proceed? [Y/n]: ")
+                    prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
+                    prompt_win.refresh()
+                except Exception:
+                    pass
+            
+            confirm_redraw()
+            
+            # Input loop with timeout
             while True:
-                self._screen.refresh()
-                
                 try:
                     key = prompt_win.getch()
                 except (curses.error, OSError, EOFError) as e:
@@ -1304,11 +1426,9 @@ class UIManager:
             response = sys.stdin.readline().strip()
             return response
         except Exception as e:
-            logger.error(f"Unexpected error during get_input: {e}")
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Log but don't fail
+            logger.warning(f"Unexpected error during get_input: {e}")
+            # Fallback to console
             print(f"{prompt}")
             response = sys.stdin.readline().strip()
             return response
