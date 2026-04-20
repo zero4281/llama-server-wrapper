@@ -2,6 +2,24 @@
 
 This folder contains unit tests for the `ui_manager.py` ncurses CLI user interface module.
 
+## ⚠️ CRITICAL MOCKING RULE
+
+**Any test driving `render_menu` or `render_confirmation` MUST patch `ui_manager.curses.newwin` to intercept window creation.**
+
+```python
+# ❌ WRONG — mock_win.getch is never called because render_menu creates its own window
+mock_win = MagicMock()
+mock_win.getch.side_effect = [curses.KEY_ENTER]
+result = ui.render_menu(options)  # curses.newwin() runs unmocked internally
+
+# ✅ CORRECT — intercept newwin so the internal window IS your mock
+def test_enter_selects_first_option(ui, mock_win):
+    mock_win.getch.side_effect = [curses.KEY_ENTER]
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        result = ui.render_menu([{'label': 'Option A'}, {'label': 'Option B'}])
+    assert result == 0
+```
+
 ## Entry Point
 
 The tests are orchestrated through **`__init__.py`**, which serves as the entry point. It imports and runs all test modules in the `Tests/` directory.
@@ -266,6 +284,124 @@ Terminal size adaptation tests:
 
 **Run:** `python3 -m pytest Tests/test_ui_manager_terminal_sizes.py -v`
 
+## Test Author Checklist
+
+### ✅ Checklist for Test Authors
+
+When writing a test that calls `render_menu` or `render_confirmation`, verify:
+
+- [ ] I imported `patch` from `unittest.mock`
+- [ ] I imported `curses` for key codes (e.g., `curses.KEY_ENTER`)
+- [ ] I have a `mock_win` fixture (or created one with `MagicMock()`)
+- [ ] I set up `mock_win.getch.side_effect` with expected input sequence
+- [ ] I use `patch('ui_manager.curses.newwin', return_value=mock_win)` as a context manager
+- [ ] The patch is applied **before** calling `render_menu()` or `render_confirmation()`
+- [ ] The patch is **removed** after the test completes (context manager handles this)
+
+### Quick Reference: Mocking Pattern
+
+| Step | Action | Code |
+|------|--------|------|
+| 1 | Create mock window | `mock_win = MagicMock()` |
+| 2 | Set up input | `mock_win.getch.side_effect = [curses.KEY_ENTER, 13]` |
+| 3 | Patch `newwin` | `with patch('ui_manager.curses.newwin', return_value=mock_win):` |
+| 4 | Call render method | `result = ui.render_menu(options)` |
+| 5 | Assert result | `assert result == 0` |
+
+### Common Mistakes to Avoid
+
+**Mistake 1: Forgetting the patch context manager**
+```python
+# WRONG — patch is applied globally, not just during the test
+def test_something():
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        ...
+    # render_menu() called outside the patch
+    ui.render_menu(options)  # ❌ Unpatched!
+```
+
+**Mistake 2: Patching the wrong path**
+```python
+# WRONG — patching 'curses.newwin' instead of 'ui_manager.curses.newwin'
+with patch('curses.newwin', return_value=mock_win):
+    ...
+# render_menu() uses ui_manager.curses.newwin, so this patch has no effect
+```
+
+**Mistake 3: Not importing required modules**
+```python
+# Must import these to access curses constants
+from unittest.mock import patch
+import curses
+```
+
+### When NOT to Patch `newwin`
+
+You don't need to patch `newwin` when:
+- Testing methods that don't use curses windows (e.g., `print_header`, `print_message` in fallback mode)
+- Testing `UIManager.__init__` or `_cleanup_terminal` without driving render methods
+- Testing pure logic that doesn't involve UI rendering
+
+In these cases, only patch the `curses` module itself:
+
+```python
+with patch('ui_manager.curses', mock_curses):
+    # Your test here
+```
+
+### Additional Resources
+
+- See `conftest.py` for the shared `mock_win` fixture definition
+- Review `test_render_menu.py` and `test_render_confirmation.py` for real-world examples
+- See `TODOs.md` for the full mocking rule documentation
+
+### Checklist for Test Authors
+
+When writing a test that calls `render_menu` or `render_confirmation`:
+
+1. **Create a mock window** - Use `MagicMock()` for `mock_win`
+2. **Set up input** - Configure `mock_win.getch.side_effect` with expected key codes
+3. **Patch `newwin`** - Use `patch('ui_manager.curses.newwin', return_value=mock_win)` in your test
+4. **Verify interactions** - Assert that the correct methods were called on `mock_win`
+
+### Examples
+
+**Menu selection example:**
+```python
+def test_typing_selection_selects_option_3(ui, mock_win):
+    """Verify that typing '3' selects the third option."""
+    mock_win.getch.side_effect = [
+        '3',  # User types '3'
+        curses.KEY_ENTER  # User presses Enter to confirm
+    ]
+    
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        result = ui.render_menu([
+            {'label': 'Option 1'},
+            {'label': 'Option 2'},
+            {'label': 'Option 3'},
+            {'label': 'Option 4'}
+        ])
+    
+    assert result == 2  # Zero-indexed, so option 3 is index 2
+    mock_win.getch.assert_called_with()
+```
+
+**Confirmation example:**
+```python
+def test_n_cancels_confirmation(ui, mock_win):
+    """Verify that 'n' cancels the confirmation dialog."""
+    mock_win.getch.side_effect = ['n']
+    
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        result = ui.render_confirmation(
+            "Proceed with installation? [Y/n]:",
+            default=False
+        )
+    
+    assert result is False  # Cancelled
+```
+
 ## Requirements Compliance
 
 Per **Requirements.md Section 8 (CLI User Interface Module)**:
@@ -311,6 +447,126 @@ All tests use mocked `curses` modules to verify functionality without requiring 
 - Tests run in any Python environment
 - Tests verify correct curses API calls
 - Tests verify UI logic without visual output
+
+## Critical Mocking Pattern
+
+### The Golden Rule
+
+**Any test driving `render_menu` or `render_confirmation` MUST patch `ui_manager.curses.newwin` to intercept window creation.**
+
+The `render_menu` and `render_confirmation` methods internally call `curses.newwin()` to create a new window for the dialog. Without patching this, your test's `mock_win.getch()` mock will never be called because a completely different (unmocked) window object is created.
+
+### ❌ WRONG — mock_win.getch is never called
+
+```python
+mock_win = MagicMock()
+mock_win.getch.side_effect = [curses.KEY_ENTER]
+result = ui.render_menu(options)  # curses.newwin() runs unmocked internally
+# Result: AttributeError or unexpected behavior because real curses.newwin() is called
+```
+
+### ✅ CORRECT — intercept newwin so the internal window IS your mock
+
+```python
+from unittest.mock import patch
+
+def test_enter_selects_first_option(ui, mock_win):
+    mock_win.getch.side_effect = [curses.KEY_ENTER]
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        result = ui.render_menu([{'label': 'Option A'}, {'label': 'Option B'}])
+    assert result == 0
+```
+
+### Why This Works
+
+1. `patch('ui_manager.curses.newwin', return_value=mock_win)` replaces `curses.newwin` in the `ui_manager` module with a function that returns your mock
+2. When `render_menu()` calls `curses.newwin()`, it gets your mock instead of creating a real window
+3. Your test can then control the mock's behavior via `mock_win.getch.side_effect`
+
+### Common Mistakes
+
+**Mistake 1: Forgetting the patch context manager**
+```python
+# WRONG — patch is applied globally, not just during the test
+def test_something():
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        ...
+    # render_menu() called outside the patch
+    ui.render_menu(options)  # ❌ Unpatched!
+```
+
+**Mistake 2: Patching the wrong path**
+```python
+# WRONG — patching 'curses.newwin' instead of 'ui_manager.curses.newwin'
+with patch('curses.newwin', return_value=mock_win):
+    ...
+# render_menu() uses ui_manager.curses.newwin, so this patch has no effect
+```
+
+**Mistake 3: Not importing the required modules**
+```python
+# Must import these to access curses constants
+from unittest.mock import patch
+import curses
+```
+
+### Checklist for Test Authors
+
+Before committing a test that drives `render_menu` or `render_confirmation`, verify:
+
+- [ ] I imported `patch` from `unittest.mock`
+- [ ] I imported `curses` for key codes (e.g., `curses.KEY_ENTER`)
+- [ ] I have a `mock_win` fixture (or created one with `MagicMock()`)
+- [ ] I set up `mock_win.getch.side_effect` with expected input sequence
+- [ ] I use `patch('ui_manager.curses.newwin', return_value=mock_win)` as a context manager
+- [ ] The patch is applied **before** calling `render_menu()` or `render_confirmation()`
+- [ ] The patch is **removed** after the test completes (context manager handles this)
+
+### Example Test Template
+
+```python
+import pytest
+from unittest.mock import MagicMock, patch
+import curses
+
+
+def test_something_specific(mock_curses, mock_win):
+    """Your test description here."""
+    # 1. Prepare your mock_win
+    mock_win.getch.side_effect = [curses.KEY_ENTER, curses.KEY_RESIZE]
+    
+    # 2. Create UIManager instance
+    with patch('ui_manager.curses', mock_curses):
+        from ui_manager import UIManager
+        instance = UIManager("Test")
+    
+    # 3. Patch newwin and run the test
+    with patch('ui_manager.curses.newwin', return_value=mock_win):
+        result = instance.render_menu([...])
+    
+    # 4. Assert the expected behavior
+    assert result == 0
+```
+
+### When NOT to Patch `newwin`
+
+You don't need to patch `newwin` when:
+- Testing methods that don't use curses windows (e.g., `print_header`, `print_message` in fallback mode)
+- Testing `UIManager.__init__` or `_cleanup_terminal` without driving render methods
+- Testing pure logic that doesn't involve UI rendering
+
+In these cases, only patch the `curses` module itself:
+
+```python
+with patch('ui_manager.curses', mock_curses):
+    # Your test here
+```
+
+### Additional Resources
+
+- See `conftest.py` for the shared `mock_win` fixture definition
+- Review `test_render_menu.py` and `test_render_confirmation.py` for real-world examples
+- See `TODOs.md` for the full mocking rule documentation
 
 ## Test Output Interpretation
 
