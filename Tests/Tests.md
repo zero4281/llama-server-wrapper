@@ -8,7 +8,147 @@ The tests are orchestrated through **`__init__.py`**, which serves as the entry 
 
 **Run:** `python Tests/__init__.py`
 
-## Test Files
+## Terminal Key Codes Reference
+
+All tests and UIManager methods use standard `curses` key codes. Below is a complete reference:
+
+### Arrow Keys and Navigation
+| Key Code | Constant | Description | Used For |
+|----------|----------|-------------|----------|
+| `curses.KEY_UP` | `KEY_UP` | Move cursor up | Menu navigation, highlight selection |
+| `curses.KEY_DOWN` | `KEY_DOWN` | Move cursor down | Menu navigation, highlight selection |
+| `curses.KEY_LEFT` | `KEY_LEFT` | Move cursor left | Text input (not used in menus) |
+| `curses.KEY_RIGHT` | `KEY_RIGHT` | Move cursor right | Text input (not used in menus) |
+| `curses.KEY_PPAGE` | `KEY_PPAGE` | Page up | Jump to top of menu |
+| `curses.KEY_NPAGE` | `KEY_NPAGE` | Page down | Jump to bottom of menu |
+
+### Control Keys
+| Key Code | Constant | Description | Used For |
+|----------|----------|-------------|----------|
+| `curses.KEY_ENTER` | `KEY_ENTER` | Enter key | Confirm selection, confirm actions |
+| `curses.KEY_RESIZE` | `KEY_RESIZE` | Terminal resize | Cancel operation, reinitialize UI |
+| `curses.KEY_BACKSPACE` | `KEY_BACKSPACE` | Backspace | Cancel operation |
+| `curses.KEY_HOME` | `KEY_HOME` | Home key | Not used in menus |
+| `curses.KEY_END` | `KEY_END` | End key | Not used in menus |
+
+### Cancel Keys
+| Key Code | Constant | ASCII Code | Description |
+|----------|----------|------------|-------------|
+| `curses.KEY_RESIZE` | `KEY_RESIZE` | 27 (Escape) | Cancel operation |
+| `curses.KEY_BACKSPACE` | `KEY_BACKSPACE` | 127 (DEL) | Cancel operation |
+| ASCII 27 | - | - | Escape key |
+| ASCII 127 | - | - | DEL key |
+| ASCII 8 | - | - | Backspace (alternative) |
+| `ord('q')` | - | 113 | Cancel operation |
+
+### Input Characters
+| Character | ASCII Code | Description | Used For |
+|-----------|------------|-------------|----------|
+| `'0'` - `'9'` | 48-57 | Select option by number | Menu selection |
+| `'y'` / `'Y'` | 121 | Confirm action | Confirmation dialogs |
+| `'n'` / `'N'` | 110 | Cancel action | Confirmation dialogs |
+| `ord('3')` | 51 | Example: Select option 3 | Menu selection |
+
+## Test Setup Procedures
+
+### Running Tests
+
+#### Run All Tests
+```bash
+# Run all tests via entry point
+python Tests/__init__.py
+
+# Run with pytest
+python3 -m pytest Tests/ -v
+```
+
+#### Run Specific Test Files
+```bash
+# Run API tests (unittest)
+python3 Tests/test_ui_manager_api.py
+
+# Run comprehensive tests (unittest)
+python3 Tests/test_ui_manager_comprehensive.py
+
+# Run pytest tests
+python3 -m pytest Tests/test_ui_manager_pytest.py -v
+
+# Run timeout tests
+python3 -m pytest Tests/test_timeout_pytest.py -v
+
+# Run terminal size tests
+python3 -m pytest Tests/test_ui_manager_terminal_sizes.py -v
+```
+
+### Test Environment Setup
+
+All tests use **mocked `curses` modules** to verify functionality without requiring a real TTY. This ensures:
+- Tests run in CI/CD pipelines
+- Tests run in any Python environment
+- Tests verify correct curses API calls
+- Tests verify UI logic without visual output
+
+#### Mocking Setup Pattern
+
+Most tests follow a consistent mocking pattern:
+
+```python
+from unittest.mock import MagicMock, patch
+import curses
+
+# 1. Create mock curses object
+mock_curses = MagicMock(spec=curses)
+mock_curses.initscr.return_value = MagicMock()
+mock_curses.start_color = MagicMock()
+mock_curses.init_pair = MagicMock(return_value=None)
+mock_curses.cbreak = MagicMock(return_value=True)
+mock_curses.noecho = MagicMock()
+mock_curses.curs_set = MagicMock(return_value=None)
+mock_curses.has_ungetch = MagicMock(return_value=False)
+mock_curses.getscrptr = MagicMock(return_value=None)
+
+# 2. Patch curses module
+with patch('ui_manager.curses', mock_curses):
+    ui = UIManager("Test")
+    ui._using_curses = True  # Force enabled for testing
+```
+
+#### Helper Functions
+
+The `test_ui_manager_comprehensive.py` provides a helper function:
+
+```python
+def create_ui(title="Test"):
+    """Helper to create UIManager with proper mocking."""
+    mock_curses = MagicMock(spec=curses)
+    # ... (setup mock curses attributes)
+    
+    with patch('ui_manager.curses', mock_curses):
+        ui = UIManager(title)
+        ui._using_curses = True
+    return ui
+```
+
+### Running Tests in Different Environments
+
+#### Terminal Size Tests
+Tests for terminal size adaptation require mocked screen dimensions:
+
+```python
+with patch.object(ui, '_screen') as mock_screen:
+    mock_screen.getmaxyx.return_value = (20, 60)  # 20 rows, 60 columns
+    # ... test code
+```
+
+#### Timeout Tests
+Timeout tests verify behavior when no input is received:
+
+```python
+# Test that timeout returns -1
+mock_win.getch.return_value = -1  # Timeout value
+result = ui.render_menu(options)
+assert result == -1
+```
 
 ## Test Files
 
@@ -25,68 +165,120 @@ Simple API verification tests that check:
 - `curses.init_pair` calls (color pair 1: green/black, color pair 2: white/black)
 - `render_menu`, `render_confirmation`, `render_progress_bar` method signatures
 
+---
+
 ### `test_ui_manager_comprehensive.py`
 Detailed functional tests with mocked curses environment:
 
-1. **Initialization** (`test_init`)
-   - Verifies UIManager initializes curses screen and color pairs
-   - Tests `_cleanup_terminal()` restores terminal state
+**1. Initialization** (`test_init`)
+- **Expected Behavior**: UIManager initializes curses screen and color pairs
+- **Verification**: `_using_curses` is `True`, `_screen` is not `None`, `_color_pair` is not `None`
+- **Cleanup**: `_cleanup_terminal()` restores terminal state and sets `_using_curses` to `False`
 
-2. **Menu Navigation** (`test_menu_navigation`)
-   - Enter key selection
-   - Arrow key cycling (UP/DOWN, PAGE UP/DOWN)
-   - Number input selection (typing option numbers)
-   - Cancel handling (q, Esc, KEY_RESIZE, KEY_BACKSPACE)
-   - Default option display
+**2. Menu Navigation** (`test_menu_navigation`)
+- **Expected Behavior**: 
+  - Enter key (`KEY_ENTER`) selects highlighted option
+  - Arrow keys (`KEY_UP`, `KEY_DOWN`, `KEY_PPAGE`, `KEY_NPAGE`) cycle through options
+  - Number input (`'0'`-'`9'`) selects option directly
+  - Cancel keys (`q`, `Esc`, `KEY_RESIZE`, `KEY_BACKSPACE`) return `-1`
+  - Default option is displayed when `default` parameter provided
+- **Verification**: Returns selected index, or `-1` on cancel
 
-3. **Confirmation Prompts** (`test_confirmation`)
-   - Enter key confirms (default yes)
-   - `n` cancels
-   - `y`/`Y` confirms
-   - Esc cancels
+**3. Confirmation Prompts** (`test_confirmation`)
+- **Expected Behavior**:
+  - Enter key (`KEY_ENTER`) confirms (default yes)
+  - `'n'` cancels
+  - `'y'`/`'Y'` confirms
+  - Escape (`Esc`) cancels
+  - Timeout returns default (assumed yes)
+- **Verification**: Returns `True` for confirm, `False` for cancel
 
-4. **Progress Bars** (`test_progress`)
-   - Normal progress display with bytes and percentage
-   - Spinner animation for indeterminate progress (unknown size)
+**4. Progress Bars** (`test_progress`)
+- **Expected Behavior**:
+  - Normal progress shows filled bar with bytes and percentage
+  - Spinner animation for indeterminate progress (total = 0)
+- **Verification**: Creates progress window, renders bar or spinner
 
-5. **Styling** (`test_styling`)
-   - Color pair creation (green on black)
-   - Reverse video for highlighted items
-   - Bordered windows
+**5. Styling** (`test_styling`)
+- **Expected Behavior**:
+  - Color pair creation with green on black background
+  - Reverse video (`curses.A_REVERSE`) for highlighted items
+  - Bordered windows for dialogs
+- **Verification**: Color pairs initialized, attributes applied correctly
 
-6. **Edge Cases** (`test_edge_cases`)
-   - Empty options list handling
-   - Invalid input handling
-   - No screen handling (graceful fallback)
+**6. Edge Cases** (`test_edge_cases`)
+- **Expected Behavior**:
+  - Empty options list returns `-1` without error
+  - Invalid input (e.g., `'9'` when only 5 options) is ignored
+  - No screen (`_screen is None`) handled gracefully without crashing
+- **Verification**: Returns appropriate error codes, no exceptions raised
+
+---
 
 ### `test_ui_manager_pytest.py`
 Pytest-compatible test suite for comprehensive UI testing:
 
-- `test_init_fallback_on_error`: Verifies graceful fallback when curses fails
-- `test_menu_navigation_arrows`: Arrow key cycling and wrapping
-- `test_menu_typing_selection`: Number input selection
-- `test_menu_cancel_keys`: All cancel key variants (q, Esc, KEY_RESIZE, etc.)
-- `test_confirmation_enter_confirms`: Enter confirms (default yes)
-- `test_confirmation_n_cancels`: n cancels
-- `test_confirmation_y_confirms`: y/Y confirms
-- `test_progress_bar_with_bytes`: Progress display with bytes/percent
-- `test_progress_bar_spinner`: Indeterminate progress (unknown size)
-- `test_full_workflow_simulation`: Complete workflow end-to-end
+| Test Function | Expected Behavior | Verification |
+|---------------|-------------------|--------------|
+| `test_init_fallback_on_error` | Graceful fallback when curses fails | `_using_curses` is `False`, `_screen` is `None` |
+| `test_menu_navigation_arrows` | Arrow keys cycle with wrapping | Returns selected index on Enter |
+| `test_menu_typing_selection` | Number input selects directly | Returns typed number as index |
+| `test_menu_cancel_keys` | All cancel keys return `-1` | Each cancel key tested individually |
+| `test_confirmation_enter_confirms` | Enter confirms action | Returns `True` |
+| `test_confirmation_n_cancels` | `n` cancels action | Returns `False` |
+| `test_confirmation_y_confirms` | `y`/`Y` confirms action | Returns `True` |
+| `test_progress_bar_with_bytes` | Progress shows bytes/percent | Window created and rendered |
+| `test_progress_bar_spinner` | Spinner for unknown size | Spinner animation rendered |
+| `test_full_workflow_simulation` | Complete workflow end-to-end | Menu → Selection → Confirmation |
 
 **Run:** `python3 -m pytest Tests/test_ui_manager_pytest.py -v`
+
+---
+
+### `test_timeout_pytest.py`
+Pytest-compatible timeout tests for input loop handling:
+
+| Test Function | Expected Behavior | Verification |
+|---------------|-------------------|--------------|
+| `test_timeout_returns_cancel` | Timeout returns `-1` when no input | `getch` returns timeout value |
+| `test_timeout_after_navigation` | Timeout works after some navigation | Subsequent inputs still timeout |
+| `test_timeout_multiple_times` | Multiple timeouts all return `-1` | Consistent behavior |
+| `test_timeout_with_different_highlighted_states` | Timeout works regardless of highlighted index | State-independent |
+| `test_timeout_then_cancel` | Cancel still works after timeout | Both mechanisms functional |
+| `test_timeout_with_default_option` | Timeout works with default option | Default handling correct |
+| `test_timeout_with_empty_options` | Timeout handles empty options | Graceful handling |
+
+**Run:** `python3 -m pytest Tests/test_timeout_pytest.py -v`
+
+---
+
+### `test_ui_manager_terminal_sizes.py`
+Terminal size adaptation tests:
+
+| Test Function | Expected Behavior | Verification |
+|---------------|-------------------|--------------|
+| `test_small_terminal` | 40x20 terminal works | No clipping, all elements visible |
+| `test_medium_terminal` | 80x24 terminal works | Standard size handling |
+| `test_large_terminal` | 120x30 terminal works | Large size handling |
+| `test_menu_width_small` | Menu width adapts to small terminal | Minimum 60% of screen width |
+| `test_menu_width_large` | Menu width adapts to large terminal | Maximum width constraints |
+| `test_progress_bar_adaptation` | Progress bar adapts to different sizes | Window dimensions appropriate |
+
+**Run:** `python3 -m pytest Tests/test_ui_manager_terminal_sizes.py -v`
 
 ## Requirements Compliance
 
 Per **Requirements.md Section 8 (CLI User Interface Module)**:
 
-| Requirement | Test Coverage |
-|-------------|---------------|
-| §8.2 Black background, green text | `test_color_pair_setup` |
-| §8.3 Numbered menus, arrow key navigation | `test_menu_navigation` |
-| §8.4 Confirmation prompts Y/n | `test_confirmation` |
-| §8.5 Progress bar with percentage/bytes | `test_progress` |
-| §8.6 Lifecycle (init/cleanup) | `test_init`, `test_cleanup` |
-| Highlighted items reverse video | `test_styling` |
+| Requirement | Test Coverage | Test Files |
+|-------------|---------------|------------|
+| §8.2 Black background, green text | Color pair setup | `test_ui_manager_api.py`, `test_ui_manager_comprehensive.py`
+| §8.3 Numbered menus, arrow key navigation | Menu rendering/navigation | `test_menu_navigation`, `test_ui_manager_pytest.py`
+| §8.4 Confirmation prompts Y/n | Confirmation dialogs | `test_confirmation`, `test_ui_manager_pytest.py`
+| §8.5 Progress bar with percentage/bytes | Progress display | `test_progress`, `test_ui_manager_pytest.py`
+| §8.6 Lifecycle (init/cleanup) | Initialization/cleanup | `test_init`, `test_ui_manager_comprehensive.py`
+| §8.7 Timeout handling (input loop) | Timeout scenarios | `test_timeout_pytest.py`, `test_timeout_comprehensive.py`
+| Highlighted items reverse video | Styling | `test_styling`, `test_ui_manager_pytest.py`
 
 ## Running Tests
 
@@ -119,3 +311,23 @@ All tests use mocked `curses` modules to verify functionality without requiring 
 - Tests run in any Python environment
 - Tests verify correct curses API calls
 - Tests verify UI logic without visual output
+
+## Test Output Interpretation
+
+### Success Indicators
+- All tests pass without exceptions
+- Mocked curses calls are verified (e.g., `init_pair` called with correct arguments)
+- Return values match expected values (e.g., `render_menu` returns `-1` on cancel)
+
+### Failure Indicators
+- `AssertionError`: Test logic failure
+- `TypeError`: Incorrect mock setup (e.g., missing attribute)
+- `AttributeError`: Missing mock configuration
+
+### Debugging Tips
+1. Check mock setup: Ensure all required attributes are mocked
+2. Verify return values: Mock objects should return appropriate values for curses calls
+3. Use `pytest -v`: Verbose output shows which tests pass/fail
+4. Add print statements: For complex mocking scenarios
+
+(End of file - total 327 lines)

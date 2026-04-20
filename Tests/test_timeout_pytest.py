@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+Pytest-compatible timeout tests for UIManager render_menu input loop.
+
+Run with: pytest test_timeout_pytest.py -v
+"""
+
+import sys
+from pathlib import Path
+import curses
+
+sys.path.insert(0, str(Path.cwd()))
+
+import pytest
+from unittest.mock import MagicMock, patch
+from ui_manager import UIManager
+
+
+def create_ui():
+    """Create a UIManager instance with mocked curses."""
+    mock_curses = MagicMock(spec=curses)
+    mock_curses.initscr.return_value = MagicMock()
+    mock_curses.start_color = MagicMock()
+    mock_curses.init_pair = MagicMock(return_value=None)
+    mock_curses.cbreak = MagicMock(return_value=True)
+    mock_curses.noecho = MagicMock()
+    mock_curses.curs_set = MagicMock(return_value=None)
+    mock_curses.has_ungetch = MagicMock(return_value=False)
+    mock_curses.getscrptr = MagicMock(return_value=None)
+    
+    with patch('ui_manager.curses', mock_curses):
+        ui = UIManager("Test")
+        ui._using_curses = True
+    return ui
+
+
+class TestTimeoutPytest:
+    """Pytest tests for UIManager timeout handling."""
+    
+    def test_timeout_returns_cancel(self):
+        """Timeout should return -1 (cancel)."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None  # Timeout
+                
+                result = ui.render_menu(options, default=0, highlighted=0)
+                assert result == -1
+    
+    def test_timeout_after_navigation(self):
+        """Timeout after navigation should still return -1."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [
+                    curses.KEY_DOWN,
+                    curses.KEY_UP,
+                    None  # Timeout
+                ]
+                
+                result = ui.render_menu(options, default=0, highlighted=0)
+                assert result == -1
+    
+    def test_timeout_multiple_times(self):
+        """Multiple timeouts should all return -1."""
+        options = [{'label': f'Option {i}'} for i in range(3)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [None, None, None]
+                
+                result = ui.render_menu(options, default=0, highlighted=0)
+                assert result == -1
+                # Verify redraw was called (menu updates on timeout)
+                assert mock_win.addstr.call_count > 0
+    
+    def test_timeout_with_different_highlighted_states(self):
+        """Timeout should work regardless of highlighted index."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        for highlighted in [0, 2, 4, None]:
+            ui = create_ui()
+            
+            with patch.object(ui, '_screen') as mock_screen, \
+                 patch.object(ui, 'refresh'), \
+                 patch('curses.KEY_RESIZE'), \
+                 patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+                
+                mock_win = mock_newwin.return_value
+                mock_win.getyx.return_value = (0, 0)
+                mock_screen.getmaxyx.return_value = (20, 60)
+                
+                with patch.object(mock_win, 'getch') as mock_getch:
+                    mock_getch.return_value = None
+                    
+                    result = ui.render_menu(options, default=1, highlighted=highlighted)
+                    assert result == -1
+    
+    def test_timeout_then_cancel(self):
+        """Cancel should still work after timeout."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [None, ord('q')]
+                
+                result = ui.render_menu(options, default=0, highlighted=0)
+                assert result == -1
+    
+    def test_timeout_with_default_option(self):
+        """Timeout should work with default option."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None
+                
+                result = ui.render_menu(options, default=2, highlighted=0)
+                assert result == -1
+    
+    def test_timeout_with_empty_options(self):
+        """Timeout with empty options should return -1."""
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None
+                
+                result = ui.render_menu([], default=0, highlighted=0)
+                assert result == -1
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

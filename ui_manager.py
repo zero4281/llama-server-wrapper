@@ -321,15 +321,13 @@ class UIManager:
         if self._using_curses:
             try:
                 curses.setupterm()
-            except curses.error:
-                logger.warning(f"curses.setupterm() failed, falling back to console mode")
-                return self._fallback_console_menu(options, default, highlighted)
+            except (curses.error, AttributeError, OSError):
+                logger.debug(f"curses.setupterm() failed, continuing with screen")
         
         # Console fallback
         if not self._using_curses or not self._screen:
             # Reset terminal
             try:
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                 curses.curs_set(1)
                 curses.endwin()
             except:
@@ -533,24 +531,7 @@ class UIManager:
                 else:
                     logger.debug(f"Input loop iteration: key=None (EOF/timeout)")
                 
-                # Handle keys
-                # Handle numeric key input (0-9) for direct selection
-                # getch() can return None (EOF, terminal closed) or int for regular characters
-                # Already handled above for known numeric key codes, but also check for any ASCII digit
-                if key is not None and isinstance(key, int):
-                    # Double-check for numeric keys (defensive programming)
-                    if ord('0') <= key <= ord('9'):
-                        selection = int(chr(key))
-                        logger.debug(f"Numeric key detected: key={key} -> selection={selection}")
-                        if 0 <= selection < len(options):
-                            old_highlighted = highlighted_idx
-                            highlighted_idx = selection
-                            logger.debug(f"State change: highlighted_idx {old_highlighted} -> {highlighted_idx}")
-                            try:
-                                redraw(menu_win, highlighted_idx)
-                            except Exception as redraw_error:
-                                logger.error(f"Redraw failed after numeric key: {redraw_error}")
-                            continue
+
                 
                 # Handle navigation and control keys
                 if key == curses.KEY_UP:
@@ -568,10 +549,11 @@ class UIManager:
                     continue
                 
                 if key == curses.KEY_PPAGE:
-                    # Page up - move up half screen (5 options for 10-option menu)
+                    # Page up - move up half the visible menu
                     old_hi = highlighted_idx
-                    half_screen = 5  # Default, can be adjusted based on screen
-                    new_idx = highlighted_idx - half_screen
+                    # Calculate page size based on screen height and menu size
+                    page_size = max(1, min(len(options) // 2, (menu_height - 2) // 2))
+                    new_idx = highlighted_idx - page_size
                     if new_idx < 0:
                         # Wrap to end
                         highlighted_idx = len(options) - (abs(new_idx) % len(options))
@@ -599,10 +581,11 @@ class UIManager:
                     continue
                 
                 if key == curses.KEY_NPAGE:
-                    # Page down - move down half screen (5 options for 10-option menu)
+                    # Page down - move down half the visible menu
                     old_hi = highlighted_idx
-                    half_screen = 5  # Default, can be adjusted based on screen
-                    new_idx = highlighted_idx + half_screen
+                    # Calculate page size based on screen height and menu size
+                    page_size = max(1, min(len(options) // 2, (menu_height - 2) // 2))
+                    new_idx = highlighted_idx + page_size
                     if new_idx < len(options):
                         highlighted_idx = new_idx
                     else:
@@ -828,19 +811,15 @@ class UIManager:
                     print("Proceed? [Y/n]: ", end="", flush=True)
                     response = sys.stdin.readline().strip().lower()
                 
-                # Handle response from fallback
-                if response in ('', 'y', 'yes'):
-                    return True
-                
                 # Handle key input
                 if key is None:
                     # EOF/timeout - assume default (yes)
                     logger.debug("Confirmation: timeout, assuming default yes")
                     return True
                 
-                if key == 27 or key == curses.KEY_RESIZE:
+                if key == 27 or key == curses.KEY_RESIZE or key == curses.KEY_BACKSPACE:
                     # Cancel
-                    logger.debug("Confirmation: ESC/RESIZE pressed, cancelling")
+                    logger.debug("Confirmation: ESC/RESIZE/BACKSPACE pressed, cancelling")
                     self._screen.erase()
                     return False
                 
@@ -864,13 +843,6 @@ class UIManager:
                     self._screen.erase()
                     self._screen.refresh()
                     return False
-                
-                elif 0 <= key < 127:  # Regular character input
-                    # Handle character input (e.g., typing 'y' or 'n')
-                    logger.debug(f"Confirmation: character input received: {chr(key)}")
-                    self._screen.erase()
-                    self._screen.refresh()
-                    return True
                 
                 # Timeout - assume default (yes)
                 logger.debug("Confirmation: timeout, assuming default yes")
