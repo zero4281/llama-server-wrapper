@@ -5,6 +5,62 @@ uimanager.py — ncurses CLI user interface module.
 This module provides ncurses-based UI rendering for menus, prompts,
 progress bars, and other interactive elements with black background
 and green text styling.
+
+Key Code Reference
+==================
+
+All UIManager methods use standard curses key codes. Below is a quick reference:
+
+### Navigation & Control Keys
+| Key Code | Constant | Description | Used For |
+|----------|----------|-------------|----------|
+| `curses.KEY_UP` | KEY_UP | Move cursor up | Menu navigation, highlight selection |
+| `curses.KEY_DOWN` | KEY_DOWN | Move cursor down | Menu navigation, highlight selection |
+| `curses.KEY_LEFT` | KEY_LEFT | Move cursor left | Not used in menus |
+| `curses.KEY_RIGHT` | KEY_RIGHT | Move cursor right | Not used in menus |
+| `curses.KEY_PPAGE` | KEY_PPAGE | Page up | Jump to top of menu |
+| `curses.KEY_NPAGE` | KEY_NPAGE | Page down | Jump to bottom of menu |
+| `curses.KEY_ENTER` | KEY_ENTER | Enter key | Confirm selection, confirm actions |
+| `curses.KEY_RESIZE` | KEY_RESIZE | Terminal resize | Cancel operation |
+| `curses.KEY_BACKSPACE` | KEY_BACKSPACE | Backspace | Cancel operation |
+
+### Cancel Keys (Escape, DEL, Backspace)
+| Key Code | ASCII | Description |
+|----------|-------|-------------|
+| `curses.KEY_RESIZE` | 27 (Escape) | Cancel operation |
+| `curses.KEY_BACKSPACE` | 127 (DEL) | Cancel operation |
+| ASCII 27 | - | Escape key |
+| ASCII 127 | - | DEL key |
+| ASCII 8 | - | Backspace (alternative) |
+| `ord('q')` | 113 | Cancel operation |
+
+### Input Characters
+| Character | ASCII | Description | Used For |
+|-----------|-------|-------------|----------|
+| `'0'` - `'9'` | 48-57 | Select option by number | Menu selection |
+| `'y'` / `'Y'` | 121 | Confirm action | Confirmation dialogs |
+| `'n'` / `'N'` | 110 | Cancel action | Confirmation dialogs |
+
+### Other Control Keys
+| Key Code | ASCII | Description | Used For |
+|----------|-------|-------------|----------|
+| ASCII 10 | - | LF/Enter | Confirm selection |
+| ASCII 13 | - | CR/Enter | Confirm selection |
+
+Main Methods:
+- `render_menu(options, default, highlighted)`: Returns selected index or -1 (cancel)
+- `render_confirmation(message, default)`: Returns True (confirm) or False (cancel)
+- `render_progress_bar(filename, current, total)`: Waits for any key
+- `render_success(message)`: Waits for any key
+- `render_error(message)`: Waits for any key
+- `print_simple_menu(options, default, highlighted)`: Returns selected index or None (cancel)
+- `get_input(prompt)`: Returns input string
+- `get_numbered_input(options, default)`: Returns selected index or None (cancel)
+
+Usage Examples:
+- Menu: Use arrow keys to navigate, type number to select, Enter to confirm, q/Esc to cancel
+- Confirmation: Enter/Y to confirm, n/Esc to cancel, timeout defaults to yes
+- Progress bars: Press any key to continue
 """
 
 import curses
@@ -115,6 +171,21 @@ class UIManager:
                 logger.error(f"Curses initialization failed: {e}")
                 self._restore_terminal_state()
                 print(f"Curses initialization failed: {e}", file=sys.stderr)
+                self._using_curses = False
+                self._screen = None
+                self._color_pair = None
+                self._initialized = False
+            except Exception as restore_error:
+                try:
+                    logger.error(f"Error restoring terminal state: {restore_error}")
+                except:
+                    pass
+        except AttributeError as e:
+            # Handle partial initialization failures where curses attributes are missing
+            try:
+                logger.error(f"AttributeError during curses initialization: {e}")
+                self._restore_terminal_state()
+                print(f"AttributeError during initialization: {e}", file=sys.stderr)
                 self._using_curses = False
                 self._screen = None
                 self._color_pair = None
@@ -313,6 +384,12 @@ class UIManager:
             
         Returns:
             Selected option index, or -1 if cancelled
+        
+        Supported Key Codes:
+            - Navigation: KEY_UP (259), KEY_DOWN (258), KEY_PPAGE (339), KEY_NPAGE (338)
+            - Enter: KEY_ENTER (343, 10, 13)
+            - Cancel: 27 (Escape), ord('q') (113), KEY_RESIZE (410), KEY_BACKSPACE (263, 127, 8)
+            - Selection: '0'-'9' (ASCII 48-57)
         """
         start_time = time.time()
         logger.info(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}")
@@ -435,7 +512,7 @@ class UIManager:
             
             # Log menu state for debugging
             logger.debug(f"Menu initialized: options_count={len(options)}, default={default}, highlighted={highlighted_idx}")
-        except curses.error as e:
+        except (curses.error, AttributeError, OSError) as e:
             logger.error(f"Menu window creation error: {e}")
             try:
                 self._cleanup_terminal()
@@ -453,9 +530,18 @@ class UIManager:
         try:
             logger.debug("Starting render_menu input loop")
             while True:
+                # Check if window is still valid before getting key
+                if not hasattr(menu_win, 'getch') or not callable(menu_win.getch):
+                    logger.warning(f"Window getch method not available, cleaning up and returning")
+                    try:
+                        self._cleanup_terminal()
+                    except:
+                        pass
+                    return -1
+                
                 try:
                     key = menu_win.getch()
-                except (curses.error, KeyboardInterrupt, OSError, EOFError) as e:
+                except (curses.error, AttributeError, OSError, EOFError, TypeError) as e:
                         logger.error(f"Menu getch() error: {e}")
                         try:
                             self._cleanup_terminal()
@@ -679,6 +765,11 @@ class UIManager:
             
         Returns:
             True if confirmed, False if cancelled
+        
+        Supported Key Codes:
+            - Confirm: KEY_ENTER (10, 13), ord('y') (121), ord('Y') (121)
+            - Cancel: 27 (Escape), KEY_RESIZE (410), KEY_BACKSPACE (263, 127, 8), ord('n') (110), ord('N') (110)
+            - Timeout: Returns default value (assumed yes)
         """
         start_time = time.time()
         result = None
@@ -890,6 +981,10 @@ class UIManager:
             current: Current bytes downloaded
             total: Total bytes
             percent: Optional pre-calculated percentage
+        
+        Supported Key Codes:
+            - Any key press (all valid curses key codes)
+            - Console fallback: Enter (10, 13)
         """
         start_time = time.time()
         logger.info(f"render_progress_bar entry: file={Path(filename).name}, current={current:,}, total={total:,}")
@@ -1015,7 +1110,12 @@ class UIManager:
             input("Press Enter to continue...")
 
     def render_success(self, message: str) -> None:
-        """Render success message."""
+        """Render success message.
+        
+        Supported Key Codes:
+            - Any key press (all valid curses key codes)
+            - Console fallback: Enter (10, 13)
+        """
         logger.debug(f"render_success called: {message[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -1108,7 +1208,12 @@ class UIManager:
             input("Press Enter to continue...")
 
     def render_error(self, message: str) -> None:
-        """Render error message."""
+        """Render error message.
+        
+        Supported Key Codes:
+            - Any key press (all valid curses key codes)
+            - Console fallback: Enter (10, 13)
+        """
         logger.debug(f"render_error called: {message[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -1213,6 +1318,12 @@ class UIManager:
             
         Returns:
             Selected index, or None if cancelled
+        
+        Supported Key Codes:
+            - Navigation: KEY_UP (259), KEY_DOWN (258)
+            - Enter: KEY_ENTER (343, 10, 13)
+            - Cancel: 27 (Escape), ord('q') (113)
+            - Selection: '0'-'9' (ASCII 48-57)
         """
         logger.debug(f"print_simple_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
         if not self._using_curses:
@@ -1343,7 +1454,11 @@ class UIManager:
                 return None
 
     def get_input(self, prompt: str) -> str:
-        """Get user input with confirmation styling."""
+        """Get user input with confirmation styling.
+        
+        Supported Key Codes:
+            - Console fallback: Enter (10, 13)
+        """
         logger.debug(f"get_input called with prompt={prompt[:60]}...")
         if not self._using_curses:
             # Use console fallback with proper terminal reset
@@ -1407,7 +1522,13 @@ class UIManager:
 
     def get_numbered_input(self, options: List[str], 
                           default: Optional[int] = None) -> Optional[int]:
-        """Get numbered input from user."""
+        """Get numbered input from user.
+        
+        Supported Key Codes:
+            - Enter: KEY_ENTER (343, 10, 13)
+            - Cancel: 27 (Escape)
+            - Selection: '0'-'9' (ASCII 48-57)
+        """
         logger.debug(f"get_numbered_input called with options={len(options)}, default={default}")
         if not self._using_curses:
             # Use console fallback with proper terminal reset

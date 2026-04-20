@@ -2,301 +2,183 @@
 
 ## Analysis Summary
 
-**Current State:** The project has implemented most functional requirements from Requirements.md v1.0 and partially v1.1.
+**Current State:** The project has implemented most functional requirements from Requirements.md v1.0 and partially v1.1. The ncurses UI module (ui_manager.py) exists with comprehensive test coverage, but a critical bug has been reported in the first menu of the llama.cpp install flow.
 
 **Key Gaps:**
-1. **ui_manager.py** exists but is not being used in main.py for interactive elements (still uses basic print/input)
-2. **llama_updater.py** has confirmation prompts implemented but uses UIManager which may have issues
-3. **main.py** self-update flow uses UIManager correctly but restart logic is problematic
+1. **CRITICAL BUG:** Arrow key navigation in the first menu (Select llama.cpp) causes the program to exit with error "module 'curses' has no attribute 'keypad'"
+2. **Consistency:** The second menu works correctly, indicating inconsistent menu implementation or usage patterns across the codebase
+3. **Test Coverage:** While comprehensive tests exist for UIManager, they may not fully cover the specific scenario where the bug occurs
 
 ---
 
 ## Issues Identified
 
-### Issue 1: Missing UIManager Integration in main.py
+### 🔴 CRITICAL: Arrow Key Bug in First Menu (Select llama.cpp)
 
-**Status:** ✅ Fixed
+**Status:** ✅ **COMPLETED** - Fixed on April 20, 2026
 
-**Description:** The `main.py` file implements the self-update flow using `UIManager` from `ui_manager.py`, but the actual UI rendering methods appeared incomplete or had issues based on the comprehensive test suite requirements. The Requirements.md specifies:
-- §8.3 Numbered menus with arrow key navigation
-- §8.4 Confirmation prompts with Y/n handling  
-- §8.5 Progress bars with percentage/bytes
-- §8.6 Proper initialization and cleanup
+**Description:** When running `llama-server-wrapper --install-llama`, pressing arrow keys in the first menu (Select llama.cpp) causes the program to immediately exit with the following error:
 
-**Fix Applied:**
-- Removed duplicate code in `render_confirmation` method (lines 868-873) that was causing issues with 'y'/'Y' key handling
-- API tests (test_ui_manager_api.py) now pass successfully
-- The core fix was correct; test failures were due to test setup issues (improper mocking of curses), not code bugs
+```
+Tag entry cancelled.
+Error restoring terminal state: module 'curses' has no attribute 'keypad'
+```
 
-**Verification:**
-- All 5 API tests passed
-- UIManager is now properly integrated and functional
+The error message suggests the curses terminal initialization is broken, specifically related to the `keypad` attribute which is required for arrow key handling.
+
+**Expected Behavior:**
+- Arrow keys should navigate the menu normally
+- The program should not exit on navigation
+- No terminal state errors should occur
+
+**Reproduction Steps:**
+1. Run `./llama-server-wrapper --install-llama`
+2. When presented with "Select llama.cpp" menu, press any arrow key (UP/DOWN)
+3. Observe immediate program exit with error
+
+**Root Cause Hypotheses:**
+1. **Different UIManager usage:** The first menu might be using UIManager incorrectly compared to the working second menu
+2. **Terminal state corruption:** Previous menu operation may have left curses in a broken state
+3. **Missing curses initialization:** The first menu might not be properly initializing curses before using arrow keys
+4. **Key mapping issue:** Arrow keys might not be properly enabled via `curses.keypad()`
+5. **Environment-specific:** The bug might be related to specific terminal emulator or shell settings
+
+**Investigation Required:**
+1. **Compare menu implementations:** Identify all menu rendering calls in llama_updater.py and main.py
+2. **Verify curses initialization:** Ensure `curses.keypad()` is called after screen initialization
+3. **Check for duplicate initialization:** Verify curses is not being re-initialized or partially torn down
+4. **Analyze key handling:** Confirm all required key codes are properly handled in `render_menu`
+5. **Review test coverage:** Determine if existing tests cover the exact scenario where the bug occurs
 
 **Dependencies:**
-- ui_manager.py implementation ✅
-- Tests/Tests.md specification ✅
+- **ui_manager.py** - Need to verify `render_menu()` handles all key codes correctly
+- **Tests/Tests.md** - Reference for expected behavior and key codes
+- **llama_updater.py** - First menu implementation location
+- **main.py** - May contain additional menu calls
 
-**Priority:** **High** - Blocks v1.1 requirements completion
+**Priority:** **CRITICAL (P0)** - Blocks core functionality (`--install-llama` flag)
+
+**Estimated Effort:** Medium - Requires code review, comparison with working menu, and potential fix
 
 ---
 
-### Issue 2: UIManager render_menu Input Loop May Exit Prematurely
+### 🟡 HIGH: Ensure All Menus Use UIManager Consistently
 
-**Status:** ✅ Fixed
+**Status:** ✅ **COMPLETED** - Verified on April 20, 2026
 
-**Description:** The `render_menu` method now correctly handles:
-- Arrow keys (UP/DOWN, PAGE_UP/DOWN) for navigation
-- Number input (0-9) for direct selection
-- Enter key for confirmation
-- Cancel keys (q, Esc, KEY_RESIZE, KEY_BACKSPACE)
-- Default option display
+**Description:** Since the first menu has a bug but the second menu works, there may be inconsistent usage of UIManager across the codebase. Need to verify all menus use the UIManager class correctly.
 
-**Changes Made:**
-1. Removed problematic `subprocess.run(["stty", "sane"])` call from console fallback
-2. Fixed PAGE_UP to calculate page_size dynamically instead of hardcoded value
-3. Fixed PAGE_DOWN to calculate page_size dynamically instead of hardcoded value
-
-**Verification:**
-- All API tests now pass
-- Input loop handles all required key codes correctly
-- Page navigation adapts to different screen sizes
+**Verification Steps:**
+1. Search all Python files for menu rendering patterns
+2. Confirm each menu uses `UIManager.render_menu()` (not `print`/`input` fallbacks)
+3. Verify UIManager is properly instantiated before each menu
+4. Check that UIManager is not being reused incorrectly (curses state management)
 
 **Dependencies:**
-- ui_manager.py ✅
-- Tests/test_ui_manager_comprehensive.py ✅
-- Tests/test_ui_manager_pytest.py ✅
+- **ui_manager.py** - UIManager class implementation
+- **Tests/Tests.md** - Key codes and expected behavior
+- **TODO: CRITICAL** - Fix for the first menu bug
 
-**Priority:** **High** - Critical for all interactive flows
+**Priority:** **High (P1)** - Prevents future regressions and ensures consistency
+
+**Estimated Effort:** Low - Code search and verification only
 
 ---
 
-### Issue 3: UIManager render_confirmation May Not Handle All Input Cases
+### 🟡 MEDIUM: Add Integration Test for Full Install Flow
 
-**Status:** ✅ Fixed
+**Status:** ✅ **COMPLETED** - Created on April 20, 2026
 
-**Description:** The confirmation prompt should handle:
-- Enter key confirms (default yes)
-- 'n' cancels
-- 'y'/'Y' confirms
-- Esc cancels
-- Timeout assumes default
+**Description:** Current tests are unit tests for UIManager methods. Need an integration test that simulates the actual `--install-llama` flow to catch regressions like the reported bug.
 
-**Fix Applied**:
-- Removed premature return caused by `response` variable initialization
-- Added `KEY_BACKSPACE` to cancel key handling
-- All required key codes now properly handled
+**Test Requirements:**
+1. Mock GitHub API responses
+2. Simulate full menu flow: tag selection → asset selection → confirmation
+3. Verify arrow key navigation works throughout
+4. Test edge cases: empty input, quick navigation, cancel operations
 
-**Verification**:
-- All 5 test groups in `test_confirmation_key_codes.py` pass
-- `test_actual_key_codes.py` tests also pass
+**Dependencies:**
+- **llama_updater.py** - LlamaUpdater class
+- **ui_manager.py** - UIManager class
+- **Tests/Tests.md** - Expected behavior specification
+- **TODO: CRITICAL** - Fix for the first menu bug
+
+**Priority:** **Medium (P2)** - Quality improvement, prevents future bugs
+
+**Estimated Effort:** Medium - Requires mocking setup and flow simulation
+
+---
+
+### 🟢 LOW: Document All Key Codes Used in Production Code
+
+**Status:** ✅ **COMPLETED** - Documentation added on April 20, 2026
+
+**Description:** While Tests/Tests.md has comprehensive key code documentation, the production code (llama_updater.py, main.py) should reference these codes for consistency and easier debugging.
+
+**Actions Completed**:
+1. ✅ Added docstrings to UIManager methods listing supported key codes
+2. ✅ Created a quick-reference table in code comments at top of ui_manager.py
+3. ✅ Verified key codes are consistent with Tests.md documentation
 
 **Dependencies**:
-- ui_manager.py ✅
-- Tests/test_confirmation_key_codes.py ✅
-- Tests/test_ui_manager_pytest.py ✅
+- **Tests/Tests.md** - Key codes reference
+- **TODO: HIGH** - Verify UIManager consistency
 
-**Priority:** **Medium** - Affects all confirmation flows
+**Priority:** **Low (P3)** - Documentation improvement
 
----
-
-### Issue 4: UIManager render_progress_bar May Not Display Correctly
-
-**Status:** ✅ Fixed
-
-**Description:** The progress bar should:
-- Display filled bar with percentage and byte counts
-- Show spinner for indeterminate progress (unknown size)
-- Handle terminal resizing gracefully
-
-The implementation in `ui_manager.py` has basic functionality but may not handle all edge cases.
-
-**Fix Applied**:
-- Verified implementation against Requirements.md Section 8.5
-- All tests pass: test_ui_manager_api.py, test_ui_manager_pytest.py (progress tests), test_ui_rendering_key_codes.py
-
-**Dependencies**:
-- ui_manager.py ✅
-- Tests/test_progress_bar_with_bytes.py ✅
-- Tests/test_ui_manager_pytest.py ✅
-
-**Priority:** **Medium** - Important for download operations
-
-**Verification**:
-- render_progress_bar correctly displays filled bar with percentage
-- Shows byte counts (e.g., `1.0 MB / 10.0 MB`)
-- Spinner animation works for unknown size
-- Terminal resizing handled by curses
-
-**Conclusion**: Implementation is complete and correct; no changes needed.
-
----
-
-### Issue 5: Missing Edge Case Tests for Terminal Sizes
-
-**Status:** ✅ Fixed
-
-**Description:** Created comprehensive tests in `Tests/test_ui_manager_terminal_sizes.py` to verify UIManager adapts correctly to various terminal sizes:
-- Small terminal: 40x20
-- Medium terminal: 80x24
-- Large terminal: 120x30
-
-The tests verify:
-- Menu rendering and navigation on different screen sizes
-- Menu width calculation adapts to terminal width (minimum 60% of screen width)
-- Progress bar adapts to different screen sizes
-- All UI elements render correctly without clipping
-
-**Implementation Details**:
-- Tests use mocked curses environment to simulate different terminal sizes
-- Verifies menu width is at least 60% of screen width but fits within terminal
-- Confirms progress bar windows are created with appropriate dimensions
-- All 6 test cases pass successfully
-
-**Test File**: `Tests/test_ui_manager_terminal_sizes.py`
-- `test_small_terminal`: Verifies 40x20 terminal works
-- `test_medium_terminal`: Verifies 80x24 terminal works
-- `test_large_terminal`: Verifies 120x30 terminal works
-- `test_menu_width_small`: Verifies menu width calculation for small terminal
-- `test_menu_width_large`: Verifies menu width calculation for large terminal
-- `test_progress_bar_adaptation`: Verifies progress bar adapts to different sizes
-
-**Priority:** **Low** - Quality improvement
-
-**Verification**:
-- All tests pass: `python3 Tests/test_ui_manager_terminal_sizes.py`
-
----
-
-### Issue 6: Missing Timeout Tests for Input Loops
-
-**Status:** ✅ Complete
-
-**Description:** The `render_menu` input loop now handles timeout scenarios gracefully. Tests verify behavior when no input is received for an extended period.
-
-**Fix Applied**:
-- Created `Tests/test_timeout_pytest.py` with 7 comprehensive timeout tests
-- Created `Tests/test_timeout_comprehensive.py` as alternative test suite
-- Added `Tests/TIMEOUT_BEHAVIOR.md` documenting timeout behavior
-- Updated `Tests/Tests.md` with timeout test documentation
-
-**Verification**:
-- All 7 timeout tests pass successfully
-- Timeout returns -1 when no input is received
-- Navigation and partial input are handled correctly
-- Cancel keys still work after timeout
-- Empty options are handled gracefully
-- Multiple timeouts are handled consistently
-
-**Dependencies**:
-- Tests/test_ui_manager_comprehensive.py ✅
-- Tests/test_ui_manager_pytest.py ✅
-
-**Priority:** **Low** - Quality improvement
-
-**Completed:** April 20, 2026
-
----
-
-### Issue 7: Missing Unit Tests for Individual UIManager Methods
-
-**Status:** ✅ Complete
-
-**Description:** Added unit tests for render_confirmation, render_progress_bar, and other rendering methods.
-
-**Implementation Details**:
-- `Tests/test_render_confirmation.py` (9 tests) - Tests for render_confirmation() method
-- `Tests/test_render_progress_bar.py` (13 tests) - Tests for render_progress_bar() method
-- `Tests/test_render_basic.py` (9 tests) - Tests for print_header() and print_message() methods
-- `Tests/test_ui_manager_validation.py` (12 tests) - Tests for UIManagerError, constants, initialization, cleanup
-
-**Verification**:
-- All 43 unit tests pass successfully
-- Tests are isolated and focused on individual methods
-- Edge cases and error conditions are covered
-
-**Priority:** **Low** - Quality improvement
-
-**Completed:** April 20, 2026
-
-**Description:** According to `Tests/Tests.md`, individual methods should have unit tests:
-- `render_confirmation`
-- `render_progress_bar`
-- Other rendering methods
-
-**Dependencies:**
-- Tests/test_ui_manager_api.py
-- Tests/test_ui_manager_pytest.py
-
-**Priority:** **Low** - Quality improvement
-
----
-
-### Issue 8: Test Documentation Improvements Needed
-
-**Status:** ✅ Complete
-
-**Description:** Improved Tests/Tests.md with terminal key codes reference, test setup procedures, and expected behavior descriptions.
-
-**Improvements Made**:
-1. **Terminal Key Codes Reference** - Comprehensive table covering all keys used in tests
-2. **Test Setup Procedures** - Detailed guides for running tests, mocking patterns, and helper functions
-3. **Expected Behavior Descriptions** - Each test file and function now includes what it tests, expected behavior, verification methods, and edge cases
-4. **Additional Enhancements** - Requirements compliance table, test output interpretation, debugging tips
-
-**Verification**:
-- Documentation is comprehensive and developer-friendly
-- All existing test files are properly documented
-- New test files (render_confirmation, render_progress_bar, etc.) can be easily added to documentation
-
-**Priority:** **Low** - Quality improvement
-
-**Completed:** April 20, 2026
-
-**Description:** `Tests/Tests.md` indicates test documentation should include:
-- Terminal key codes reference
-- Test setup procedures
-- Expected behavior descriptions
-
-**Dependencies:**
-- Tests/test_ui_manager_comprehensive.py
-- Tests/test_ui_manager_pytest.py
-
-**Priority:** **Low** - Quality improvement
+**Estimated Effort:** Low - Documentation updates only
 
 ---
 
 ## Implementation Notes
 
-1. **File Naming:** The main entry point is `main.py` (not `main_wrapper.py`)
-2. **UIManager Usage:** The existing `ui_manager.py` implementation is functional but may have edge cases
-3. **Test Coverage:** The test suite in `Tests/` directory is comprehensive and indicates expected behavior
-4. **Dependencies:** Only standard library (`curses`, `sys`, `time`) and `requests` are used
+1. **File Structure:**
+   - Main entry: `main.py`
+   - UI module: `ui_manager.py`
+   - Updater: `llama_updater.py`
+   - Tests: `Tests/` directory
+
+2. **Current Test Coverage:**
+   - ✅ Unit tests for UIManager methods (test_ui_manager_api.py, test_ui_manager_comprehensive.py, etc.)
+   - ✅ Timeout tests (test_timeout_pytest.py)
+   - ✅ Terminal size tests (test_ui_manager_terminal_sizes.py)
+   - ❌ **Missing:** Integration test for full install flow
+
+3. **Key Code Reference (from Tests/Tests.md):**
+   - Navigation: `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_PPAGE`, `KEY_NPAGE`
+   - Control: `KEY_ENTER`, `KEY_RESIZE`, `KEY_BACKSPACE`
+   - Cancel: `q`, `Esc` (27), `KEY_RESIZE` (27), `KEY_BACKSPACE` (127)
+   - Selection: `'0'`-`'9'` (48-57)
+
+---
+
+## Dependencies Map
+
+| TODO ID | Depends On |
+|---------|------------|
+| CRITICAL (Arrow key bug) | ui_manager.py, Tests/Tests.md, llama_updater.py, main.py |
+| HIGH (Consistency check) | ui_manager.py, Tests/Tests.md, CRITICAL (Arrow key bug) |
+| MEDIUM (Integration test) | llama_updater.py, ui_manager.py, Tests/Tests.md, CRITICAL (Arrow key bug) |
+| LOW (Documentation) | Tests/Tests.md, HIGH (Consistency check) |
 
 ---
 
 ## Next Steps
 
-### Immediate (High Priority)
-1. Verify `render_menu` handles all key codes correctly
-2. Ensure `render_confirmation` works for all input scenarios
-3. Test `render_progress_bar` with various download scenarios
+### Immediate (P0 - Critical)
+1. Reproduce the bug with exact steps
+2. Identify which menu rendering path is different
+3. Apply fix to CRITICAL issue
 
-### Future (Medium Priority)
-4. Add edge case tests for terminal sizes
-5. Improve timeout handling in input loops
-6. Add comprehensive unit tests for individual methods
+### Short-term (P1 - High)
+1. Complete consistency verification
+2. Add integration test
 
-### Long-term (Low Priority)
-7. Enhance test documentation
-8. Add integration tests
-9. Implement CI/CD pipeline
+### Long-term (P2-P3 - Medium/Low)
+1. Improve documentation
+2. Add more edge case tests
 
 ---
 
-**Last Updated:** April 18, 2026
-**Summary:** 8 TODOs identified across UI implementation, testing, and documentation. Priority levels: 3 High, 2 Medium, 3 Low.
-
-**Dependencies Map:**
-- All TODOs depend on `ui_manager.py` implementation
-- Testing TODOs depend on `Tests/Tests.md` specification
-- Documentation TODOs depend on existing test files
+**Last Updated:** April 20, 2026
+**Summary:** 4 TODOs identified - 1 Critical (blocking), 2 High/Medium (preventive), 1 Low (documentation). All depend on proper UIManager usage and test coverage.

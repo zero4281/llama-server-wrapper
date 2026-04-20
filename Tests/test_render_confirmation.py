@@ -27,7 +27,7 @@ def create_ui(title="Test"):
     mock_curses.has_ungetch = MagicMock(return_value=False)
     mock_curses.getscrptr = MagicMock(return_value=None)
     
-    with patch('ui_manager.curses', mock_curses):
+    with patch.dict('sys.modules', {'curses': mock_curses}):
         ui = UIManager(title)
         ui._using_curses = True
     return ui
