@@ -93,7 +93,7 @@ def test_small_terminal():
     
     with patch.object(ui, '_screen', mock_screen), \
          patch.object(ui, 'refresh'), \
-         patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+          patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         
         mock_win = mock_newwin.return_value
         mock_win.getyx.return_value = (0, 0)
@@ -125,7 +125,7 @@ def test_medium_terminal():
     
     with patch.object(ui, '_screen', mock_screen), \
          patch.object(ui, 'refresh'), \
-         patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+          patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         
         mock_win = mock_newwin.return_value
         mock_win.getyx.return_value = (0, 0)
@@ -157,7 +157,7 @@ def test_large_terminal():
     
     with patch.object(ui, '_screen', mock_screen), \
          patch.object(ui, 'refresh'), \
-         patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+          patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         
         mock_win = mock_newwin.return_value
         mock_win.getyx.return_value = (0, 0)
@@ -244,8 +244,8 @@ def test_progress_bar_adaptation():
         mock_screen.getmaxyx.return_value = (height, width)
         
         with patch.object(ui, '_screen', mock_screen), \
-             patch.object(ui, 'refresh'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin, \
+          patch.object(ui, 'refresh'), \
+          patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
              patch('builtins.input'):
             
             mock_win = mock_newwin.return_value
@@ -277,3 +277,184 @@ def test_progress_bar_adaptation():
 
 if __name__ == '__main__':
     run_tests()
+
+
+def test_window_height_is_exactly_6_rows():
+    """Verify that progress bar window height is exactly 6 rows."""
+    ui, mock_curses = setup_ui_for_size(80, 24)
+    
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (24, 80)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+         patch('builtins.input', return_value='\n'):
+        
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+        mock_win.getch.return_value = curses.KEY_RESIZE
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
+        
+        # Test with total > 0 (determinate bar)
+        ui.render_progress_bar("file.zip", 500, 1000, percent=50.0)
+        
+        # Verify window height is 6
+        call_args = mock_newwin.call_args
+        assert call_args is not None, "Window should be created"
+        height, width, y, x = call_args[0]
+        assert height == 6, f"Window height should be exactly 6, got {height}"
+        
+        # Test with total == 0 (spinner)
+        ui.render_progress_bar("unknown.zip", 0, 0)
+        
+        # Verify window height is still 6
+        call_args = mock_newwin.call_args
+        height, width, y, x = call_args[0]
+        assert height == 6, f"Spinner window height should be exactly 6, got {height}"
+    
+    ui._cleanup_terminal()
+    print("  ✓ Window height test passed")
+
+
+def test_window_width_calculation_and_cap():
+    """Verify window width calculation and cap at terminal_width - 10."""
+    test_cases = [
+        (40, 20, 20),   # Small terminal
+        (80, 24, 24),   # Medium terminal
+        (120, 30, 30),  # Large terminal
+    ]
+    
+    for width, height, expected_min_width in test_cases:
+        ui, mock_curses = setup_ui_for_size(width, height)
+        
+        mock_screen = MagicMock()
+        mock_screen.getmaxyx.return_value = (height, width)
+        
+        with patch.object(ui, '_screen', mock_screen), \
+             patch.object(ui, 'refresh'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('builtins.input', return_value='\n'):
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_win.getch.return_value = curses.KEY_RESIZE
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+            
+            ui.render_progress_bar("test.zip", 500, 1000, percent=50.0)
+            
+            # Verify window width is at least expected_min_width
+            call_args = mock_newwin.call_args
+            assert call_args is not None, f"Window should be created for terminal {width}x{height}"
+            height_win, width_win, y, x = call_args[0]
+            
+            # Width should be at least 50 (minimum for progress bar)
+            assert width_win >= 50, f"Window width should be at least 50, got {width_win} for {width}x{height}"
+            
+            # Width should be capped at terminal_width - 10
+            max_width = width - 10
+            assert width_win <= max_width, \
+                f"Window width {width_win} should be capped at {max_width} for {width}x{height}"
+        
+        ui._cleanup_terminal()
+    
+    print("  ✓ Window width calculation test passed")
+
+
+def test_window_height_is_exactly_6_rows():
+    """Verify that progress bar window height is exactly 6 rows."""
+    ui, mock_curses = setup_ui_for_size(80, 24)
+    
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (24, 80)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+         patch('builtins.input', return_value='\n'):
+        
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+        mock_win.getch.return_value = curses.KEY_RESIZE
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
+        
+        # Test with total > 0 (determinate bar)
+        ui.render_progress_bar("file.zip", 500, 1000, percent=50.0)
+        
+        # Verify window height is 6
+        call_args = mock_newwin.call_args
+        assert call_args is not None, "Window should be created"
+        height, width, y, x = call_args[0]
+        assert height == 6, f"Window height should be exactly 6, got {height}"
+        
+        # Test with total == 0 (spinner)
+        ui.render_progress_bar("unknown.zip", 0, 0)
+        
+        # Verify window height is still 6
+        call_args = mock_newwin.call_args
+        height, width, y, x = call_args[0]
+        assert height == 6, f"Spinner window height should be exactly 6, got {height}"
+    
+    ui._cleanup_terminal()
+    print("  ✓ Window height test passed")
+
+
+def test_window_width_calculation_and_cap():
+    """Verify window width calculation and cap at terminal_width - 10."""
+    test_cases = [
+        (40, 20, 20),   # Small terminal
+        (80, 24, 24),   # Medium terminal
+        (120, 30, 30),  # Large terminal
+    ]
+    
+    for width, height, expected_min_width in test_cases:
+        ui, mock_curses = setup_ui_for_size(width, height)
+        
+        mock_screen = MagicMock()
+        mock_screen.getmaxyx.return_value = (height, width)
+        
+        with patch.object(ui, '_screen', mock_screen), \
+             patch.object(ui, 'refresh'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('builtins.input', return_value='\n'):
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_win.getch.return_value = curses.KEY_RESIZE
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+            
+            ui.render_progress_bar("test.zip", 500, 1000, percent=50.0)
+            
+            # Verify window width is at least min(50, width - 10)
+            call_args = mock_newwin.call_args
+            assert call_args is not None, f"Window should be created for terminal {width}x{height}"
+            bar_height, bar_width, y, x = call_args[0]
+            
+            # Width should be at least min(50, width - 10)
+            min_width = min(50, width - 10)
+            assert bar_width >= min_width, f"Window width should be at least {min_width}, got {bar_width} for {width}x{height}"
+            
+            # Width should be capped at terminal_width - 10
+            max_width = width - 10
+            assert bar_width <= max_width, \
+                f"Window width {bar_width} should be capped at {max_width} for {width}x{height}"
+        
+        ui._cleanup_terminal()
+    
+    print("  ✓ Window width calculation test passed")

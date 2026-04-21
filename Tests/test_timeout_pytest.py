@@ -46,7 +46,7 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
             
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
@@ -67,19 +67,19 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
-            
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [
                     curses.KEY_DOWN,
                     curses.KEY_UP,
                     None  # Timeout
                 ]
-                
+
                 result = ui.render_menu(options, default=0, highlighted=0)
                 assert result == -1
     
@@ -92,15 +92,15 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
-            
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [None, None, None]
-                
+
                 result = ui.render_menu(options, default=0, highlighted=0)
                 assert result == -1
                 # Verify redraw was called (menu updates on timeout)
@@ -112,19 +112,19 @@ class TestTimeoutPytest:
         
         for highlighted in [0, 2, 4, None]:
             ui = create_ui()
-            
+
             with patch.object(ui, '_screen') as mock_screen, \
                  patch.object(ui, 'refresh'), \
                  patch('curses.KEY_RESIZE'), \
-                 patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-                
+                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
                 mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
                 mock_screen.getmaxyx.return_value = (20, 60)
-                
+
                 with patch.object(mock_win, 'getch') as mock_getch:
                     mock_getch.return_value = None
-                    
+
                     result = ui.render_menu(options, default=1, highlighted=highlighted)
                     assert result == -1
     
@@ -137,15 +137,15 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
-            
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.side_effect = [None, ord('q')]
-                
+
                 result = ui.render_menu(options, default=0, highlighted=0)
                 assert result == -1
     
@@ -158,15 +158,15 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
-            
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = None
-                
+
                 result = ui.render_menu(options, default=2, highlighted=0)
                 assert result == -1
     
@@ -177,15 +177,15 @@ class TestTimeoutPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
-            
+
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = None
-                
+
                 result = ui.render_menu([], default=0, highlighted=0)
                 assert result == -1
 

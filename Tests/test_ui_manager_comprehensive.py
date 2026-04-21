@@ -8,11 +8,11 @@ Run with: python3 test_ui_manager_comprehensive.py
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import curses
 
 # Add current directory to path
 sys.path.insert(0, str(Path.cwd()))
 
-import curses
 from ui_manager import UIManager
 
 
@@ -98,6 +98,7 @@ def test_init():
 def test_menu_navigation():
     """Test menu rendering and navigation."""
     import curses
+    import ui_manager
     options = [{'label': f'Option {i}'} for i in range(5)]
     KEY_UP = curses.KEY_UP
     KEY_DOWN = curses.KEY_DOWN
@@ -106,58 +107,79 @@ def test_menu_navigation():
     KEY_PPAGE = curses.KEY_PPAGE
     KEY_NPAGE = curses.KEY_NPAGE
     
-    with patch('ui_manager.curses', MagicMock(spec=curses, **{
-        'initscr': MagicMock(return_value=MagicMock()),
-        'start_color': MagicMock(),
-        'init_pair': MagicMock(return_value=None),
-        'cbreak': MagicMock(return_value=True),
-        'noecho': MagicMock(),
-        'curs_set': MagicMock(return_value=None),
-        'has_ungetch': MagicMock(return_value=False),
-        'getscrptr': MagicMock(return_value=None),
-    })):
+    mock_win = MagicMock()
+    mock_win.getyx.return_value = (0, 0)
+    mock_win.erase.return_value = None
+    mock_win.addstr.return_value = None
+    mock_win.attron.return_value = None
+    mock_win.attroff.return_value = None
+    mock_win.refresh.return_value = None
+    mock_win.box.return_value = None
+    mock_win.keypad.return_value = None
+    mock_win.timeout.return_value = None
+    mock_win.move.return_value = None
+    mock_win.box.return_value = None
+    mock_win.erase.return_value = None
+    mock_win.addstr.return_value = None
+    mock_win.attroff.return_value = None
+    mock_win.refresh.return_value = None
+    
+    # Create a curses module mock with all required functions
+    curses_mock = MagicMock(spec=curses)
+    curses_mock.initscr.return_value = MagicMock()
+    curses_mock.start_color = MagicMock()
+    curses_mock.init_pair = MagicMock(return_value=None)
+    curses_mock.cbreak = MagicMock(return_value=True)
+    curses_mock.noecho = MagicMock()
+    curses_mock.curs_set = MagicMock(return_value=None)
+    curses_mock.has_ungetch = MagicMock(return_value=False)
+    curses_mock.getscrptr = MagicMock(return_value=None)
+    curses_mock.setupterm = MagicMock()
+    curses_mock.napms = MagicMock()
+    curses_mock.keypad = MagicMock()
+    curses_mock.box = MagicMock()
+    curses_mock.erase = MagicMock()
+    curses_mock.move = MagicMock()
+    curses_mock.timeout = MagicMock()
+    curses_mock.color_pair = MagicMock()
+    curses_mock.A_REVERSE = curses.A_REVERSE
+    curses_mock.A_BOLD = curses.A_BOLD
+    # Add error exception class
+    class CursesError(Exception):
+        pass
+    curses_mock.error = CursesError
+    
+    with patch('ui_manager.curses', curses_mock), \
+         patch('ui_manager.curses.newwin', return_value=mock_win):
         ui = UIManager("Test Menu")
         ui._using_curses = True
-        
+        # Set a valid color pair to avoid MagicMock issues
+        ui._color_pair = curses.A_BOLD
+
         # Set up mocks for screen and refresh
         mock_screen = MagicMock()
         mock_screen.getmaxyx.return_value = (20, 60)
-        mock_win = MagicMock()
-        mock_screen.newwin.return_value = mock_win
-        mock_win.getyx.return_value = (0, 0)
-        mock_win.erase.return_value = None
-        mock_win.addstr.return_value = None
-        mock_win.attron.return_value = None
-        mock_win.attroff.return_value = None
-        mock_win.refresh.return_value = None
-        
-        # Patch screen temporarily
-        original_screen = ui._screen
         ui._screen = mock_screen
-        
-        with patch.object(ui, 'refresh', return_value=None):
-            # Test 1: Enter selects highlighted
-            # Setup mock_win.getch() to return KEY_ENTER when called in render_menu()
-            mock_win.getch.side_effect = [KEY_ENTER]
-            result = ui.render_menu(options, default=0, highlighted=0)
-            assert result == 0, f"Should return selected index, got {result}"
-            
-            # Test 2: Arrow keys cycle
-            mock_win.getch.side_effect = [KEY_DOWN, KEY_UP, KEY_ENTER]
-            result = ui.render_menu(options, default=0, highlighted=0)
-            assert result is not None, "Should return on enter"
-            
-            # Test 3: Typing number
-            mock_win.getch.side_effect = [ord('3'), KEY_ENTER]
-            result = ui.render_menu(options, default=0, highlighted=0)
-            assert result == 3, f"Should select by typing number, got {result}"
-            
-            # Test 4: Cancel with q
-            mock_win.getch.side_effect = [ord('q')]
-            result = ui.render_menu(options, default=0, highlighted=0)
-            assert result == -1, f"Should return -1 on cancel, got {result}"
-        
-        ui._screen = original_screen
+
+        # Test 1: Enter selects highlighted
+        mock_win.getch.side_effect = [KEY_ENTER]
+        result = ui.render_menu(options, default=0, highlighted=0)
+        assert result == 0, f"Should return selected index, got {result}"
+
+        # Test 2: Arrow keys cycle
+        mock_win.getch.side_effect = [KEY_DOWN, KEY_UP, KEY_ENTER]
+        result = ui.render_menu(options, default=0, highlighted=0)
+        assert isinstance(result, int) and result >= 0, "Should return valid index on enter"
+
+        # Test 3: Typing number
+        mock_win.getch.side_effect = [ord('3'), KEY_ENTER]
+        result = ui.render_menu(options, default=0, highlighted=0)
+        assert result == 3, f"Should select by typing number, got {result}"
+
+        # Test 4: Cancel with q
+        mock_win.getch.side_effect = [ord('q')]
+        result = ui.render_menu(options, default=0, highlighted=0)
+        assert result == -1, f"Should return -1 on cancel, got {result}"
 
 
 def test_confirmation():
@@ -174,33 +196,29 @@ def test_confirmation():
         'curs_set': MagicMock(return_value=None),
         'has_ungetch': MagicMock(return_value=False),
         'getscrptr': MagicMock(return_value=None),
-    })):
+    })), patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         ui = UIManager("Test")
         ui._using_curses = True
         
-        with patch.object(ui, '_screen') as mock_screen, \
-             patch.object(ui, 'refresh') as mock_refresh, \
-             patch('curses.KEY_RESIZE', new_callable=MagicMock):
-            
-            mock_screen.getmaxyx.return_value = (20, 60)
-            mock_win = MagicMock()
-            mock_screen.newwin.return_value = mock_win
-            mock_win.getyx.return_value = (0, 0)
-            
-            # Test 1: Enter confirms
-            mock_win.getch.return_value = KEY_ENTER
-            result = ui.render_confirmation("Are you sure?")
-            assert result is True, "Enter should confirm"
-            
-            # Test 2: n cancels
-            mock_win.getch.return_value = ord('n')
-            result = ui.render_confirmation("Are you sure?")
-            assert result is False, "n should cancel"
-            
-            # Test 3: y confirms
-            mock_win.getch.return_value = ord('Y')
-            result = ui.render_confirmation("Are you sure?")
-            assert result is True, "Y should confirm"
+        mock_screen = MagicMock()
+        mock_screen.getmaxyx.return_value = (20, 60)
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+
+        # Test 1: Enter confirms
+        mock_win.getch.return_value = KEY_ENTER
+        result = ui.render_confirmation("Are you sure?")
+        assert result is True, "Enter should confirm"
+        
+        # Test 2: n cancels
+        mock_win.getch.return_value = ord('n')
+        result = ui.render_confirmation("Are you sure?")
+        assert result is False, "n should cancel"
+        
+        # Test 3: y confirms
+        mock_win.getch.return_value = ord('Y')
+        result = ui.render_confirmation("Are you sure?")
+        assert result is True, "Y should confirm"
 
 
 def test_progress():
@@ -280,7 +298,8 @@ def test_styling():
     
     with patch.object(ui, '_screen') as mock_screen, \
          patch.object(ui, 'refresh') as mock_refresh, \
-         patch('curses.KEY_DOWN'):
+         patch('curses.KEY_DOWN'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()):
         
         mock_screen.getmaxyx.return_value = (10, 60)
         mock_win = MagicMock()
@@ -310,14 +329,16 @@ def test_edge_cases():
     
     # Empty options
     with patch.object(ui, '_screen') as mock_screen, \
-         patch.object(ui, 'refresh') as mock_refresh:
+         patch.object(ui, 'refresh') as mock_refresh, \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()):
         
         result = ui.render_menu([], default=0, highlighted=0)
         assert result == -1, "Empty options should return -1"
     
     # Invalid input handling
     with patch.object(ui, '_screen') as mock_screen, \
-         patch.object(ui, 'refresh') as mock_refresh:
+         patch.object(ui, 'refresh') as mock_refresh, \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()):
         
         options = [{'label': 'Opt'}]
         mock_screen.getmaxyx.return_value = (10, 60)
@@ -340,3 +361,69 @@ def test_edge_cases():
 
 if __name__ == '__main__':
     run_tests()
+
+
+def test_full_integration_flow():
+    """Test full integration flow: menu selection → confirmation → progress bar."""
+    import curses
+    
+    options = [{'label': 'Install'}, {'label': 'Update'}, {'label': 'Repair'}]
+    
+    KEY_ENTER = curses.KEY_ENTER
+    KEY_RESIZE = curses.KEY_RESIZE
+    
+    with patch('ui_manager.curses', MagicMock(spec=curses, **{
+        'initscr': MagicMock(return_value=MagicMock()),
+        'start_color': MagicMock(),
+        'init_pair': MagicMock(return_value=None),
+        'cbreak': MagicMock(return_value=True),
+        'noecho': MagicMock(),
+        'curs_set': MagicMock(return_value=None),
+        'has_ungetch': MagicMock(return_value=False),
+        'getscrptr': MagicMock(return_value=None),
+        'setupterm': MagicMock(),
+    })), \
+     patch('ui_manager.curses.newwin', side_effect=[MagicMock(), MagicMock(), MagicMock()]) as mock_newwin_list:
+        
+        # Configure mocks for each window
+        menu_win = mock_newwin_list.return_value  # First window (menu)
+        confirm_win = mock_newwin_list.return_value  # Second window (confirmation)
+        progress_win = mock_newwin_list.return_value  # Third window (progress)
+        
+        for win in [menu_win, confirm_win, progress_win]:
+            win.getyx.return_value = (0, 0)
+            win.erase.return_value = None
+            win.addstr.return_value = None
+            win.attron.return_value = None
+            win.attroff.return_value = None
+            win.refresh.return_value = None
+        
+        # Create UIManager
+        ui = UIManager("Test Integration")
+        ui._using_curses = True
+        
+        # Set up screen mock
+        mock_screen = MagicMock()
+        mock_screen.getmaxyx.return_value = (24, 80)
+        ui._screen = mock_screen
+        
+        # Step 1: Menu selection - user selects "Update" (index 1)
+        menu_win.getch.side_effect = [curses.KEY_DOWN, curses.KEY_DOWN, KEY_ENTER]
+        menu_selection = ui.render_menu(options, default=0, highlighted=0)
+        assert menu_selection == 1, f"Menu should select option 1 (Update), got {menu_selection}"
+        
+        # Step 2: Confirmation - user confirms with 'y'
+        confirm_win.getch.side_effect = [ord('y')]
+        confirmation = ui.render_confirmation("Proceed with installation? [Y/n]:", default=True)
+        assert confirmation is True, f"Confirmation should return True, got {confirmation}"
+        
+        # Step 3: Progress bar - simulate download progress
+        # Progress bar waits for key, so we need to provide a key
+        mock_screen.getch.return_value = KEY_RESIZE
+        ui.render_progress_bar("update.zip", 500, 1000, percent=50.0)
+        
+        # Verify all windows were created (one for each render call)
+        assert mock_newwin_list.call_count == 3, \
+            f"Should create 3 windows, got {mock_newwin_list.call_count}"
+    
+    print("  ✓ Full integration flow test passed")

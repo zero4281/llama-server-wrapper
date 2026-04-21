@@ -58,10 +58,10 @@ class TestUIManagerPytest:
              patch('curses.KEY_RESIZE'), \
              patch('curses.KEY_PPAGE'), \
              patch('curses.KEY_NPAGE'), \
-             patch('curses.A_REVERSE'), \
-             patch('curses.A_BOLD'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+              patch('curses.A_REVERSE'), \
+              patch('curses.A_BOLD'), \
+              patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
@@ -121,9 +121,9 @@ class TestUIManagerPytest:
         for cancel_key in [ord('q'), 27, curses.KEY_RESIZE, curses.KEY_BACKSPACE, 127, 8]:
             with patch.object(ui, '_screen') as mock_screen, \
                  patch.object(ui, 'refresh'), \
-                 patch('curses.KEY_DOWN'), \
-                 patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-                
+                 patch('curses.KEY_RESIZE'), \
+                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
                 mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
                 mock_screen.getmaxyx.return_value = (20, 60)
@@ -141,15 +141,15 @@ class TestUIManagerPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = 10  # Enter
-                
+
                 result = ui.render_confirmation("Are you sure?")
                 assert result is True
     
@@ -160,8 +160,8 @@ class TestUIManagerPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.erase.return_value = None
@@ -183,8 +183,8 @@ class TestUIManagerPytest:
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
@@ -203,8 +203,8 @@ class TestUIManagerPytest:
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
              patch('builtins.input'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.getch.return_value = 10
@@ -220,8 +220,8 @@ class TestUIManagerPytest:
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
              patch('builtins.input'), \
-             patch('curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_win.getch.return_value = 10
@@ -267,12 +267,12 @@ class TestUIManagerPytest:
                  patch.object(ui, 'refresh'), \
                  patch('curses.KEY_DOWN'), \
                  patch('curses.KEY_UP'), \
-                 patch('curses.newwin', side_effect=[menu_win, confirm_win]), \
+                 patch('ui_manager.curses.newwin', side_effect=[menu_win, confirm_win]), \
                  patch('curses.setupterm'), \
                  patch('curses.napms'), \
                  patch('builtins.input', return_value='\n'), \
                  patch('sys.stdin.readline', return_value='\n'):
-                
+
                 mock_screen.getmaxyx.return_value = (20, 60)
                 result = ui.render_menu(options, default=0, highlighted=0)
                 assert result == 2
@@ -283,3 +283,222 @@ class TestUIManagerPytest:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestMenuPageJump:
+    """Tests for KEY_PPAGE and KEY_NPAGE page jump behavior."""
+    
+    def test_key_ppage_jumps_to_first_option(self):
+        """KEY_PPAGE should jump to the first option."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_UP'), \
+             patch('curses.KEY_DOWN'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.KEY_PPAGE'), \
+             patch('curses.KEY_NPAGE'), \
+             patch('curses.A_REVERSE'), \
+             patch('curses.A_BOLD'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Start from middle (option 2), press PAGE UP
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [curses.KEY_PPAGE, 10]
+                
+                result = ui.render_menu(options, default=2, highlighted=2)
+                assert result == 0, f"KEY_PPAGE should jump to first option (0), got {result}"
+    
+    def test_key_npage_jumps_down_by_page_size(self):
+        """KEY_NPAGE should jump down by page size."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_UP'), \
+             patch('curses.KEY_DOWN'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.KEY_PPAGE'), \
+             patch('curses.KEY_NPAGE'), \
+             patch('curses.A_REVERSE'), \
+             patch('curses.A_BOLD'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Start from middle (option 2), press PAGE DOWN
+            # page_size = max(1, min(len(options) // 2, (menu_height - 2) // 2))
+            # With 5 options and menu_height = 9, page_size = min(2, 3) = 2
+            # First PAGE DOWN: 2 -> 4 (2 + 2 = 4)
+            # Second PAGE DOWN: 4 + 2 = 6, 6 >= 5, so 6 % 5 = 1
+            # Third key: Enter to select
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [curses.KEY_NPAGE, curses.KEY_NPAGE, 10]
+                
+                result = ui.render_menu(options, default=2, highlighted=2)
+                # First PAGE DOWN: 2 -> 4
+                # Second PAGE DOWN: 4 -> 1 (wraps)
+                # Third key: Enter to select
+                assert result == 1, f"KEY_NPAGE wrapping should work, got {result}"
+
+
+class TestMenuWrapping:
+    """Tests for wrapping behavior when navigating past boundaries."""
+    
+    def test_wraps_past_first_option(self):
+        """Navigating past first option should wrap to last."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_UP'), \
+             patch('curses.KEY_DOWN'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.KEY_PPAGE'), \
+             patch('curses.KEY_NPAGE'), \
+             patch('curses.A_REVERSE'), \
+             patch('curses.A_BOLD'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Start at option 1, press UP twice
+            # First UP: 1 -> 0 (normal)
+            # Second UP: 0 -> 4 (wrap to last)
+            # Third key: Enter to select
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [curses.KEY_UP, curses.KEY_UP, 10]
+                
+                result = ui.render_menu(options, default=1, highlighted=1)
+                assert result == 4, f"Should wrap from option 1 -> 0 -> 4, got {result}"
+    
+    def test_wraps_past_last_option(self):
+        """Navigating past last option should wrap to first."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_UP'), \
+             patch('curses.KEY_DOWN'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.KEY_PPAGE'), \
+             patch('curses.KEY_NPAGE'), \
+             patch('curses.A_REVERSE'), \
+             patch('curses.A_BOLD'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Start at option 3, press DOWN twice
+            # First DOWN: 3 -> 4 (normal)
+            # Second DOWN: 4 -> 0 (wrap to first)
+            # Third key: Enter to select
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [curses.KEY_DOWN, curses.KEY_DOWN, 10]
+                
+                result = ui.render_menu(options, default=3, highlighted=3)
+                assert result == 0, f"Should wrap from option 3 -> 4 -> 0, got {result}"
+
+
+class TestHighlightedNone:
+    """Tests for highlighted=None as initial state."""
+    
+    def test_highlighted_none_initial_state(self):
+        """When highlighted=None, should start at first option."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_UP'), \
+             patch('curses.KEY_DOWN'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('curses.KEY_PPAGE'), \
+             patch('curses.KEY_NPAGE'), \
+             patch('curses.A_REVERSE'), \
+             patch('curses.A_BOLD'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Pass highlighted=None
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.side_effect = [curses.KEY_DOWN, 10]
+                
+                result = ui.render_menu(options, default=0, highlighted=None)
+                # Should behave as if highlighted=0
+                assert result == 1, f"Should start at first option when highlighted=None, got {result}"
+
+
+class TestConfirmationTimeout:
+    """Tests for confirmation timeout behavior."""
+    
+    def test_timeout_always_returns_true(self):
+        """Timeout in confirmation always returns True (assumed yes)."""
+        ui, _ = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Simulate timeout (None)
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None
+                
+                # Timeout always returns True regardless of default parameter
+                result = ui.render_confirmation("Are you sure?", default=False)
+                assert result is True, f"Timeout should return True, got {result}"
+    
+    def test_timeout_independent_of_default(self):
+        """Timeout returns True regardless of default parameter."""
+        ui, _ = create_ui()
+        
+        # Test that timeout returns True regardless of default parameter
+        test_cases = [
+            (True, True),   # default=True, expect True
+            (False, True),  # default=False, but timeout still returns True
+        ]
+        
+        for default_value, expected_result in test_cases:
+            with patch.object(ui, '_screen') as mock_screen, \
+                 patch.object(ui, 'refresh'), \
+                 patch('curses.KEY_RESIZE'), \
+                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+                
+                mock_win = mock_newwin.return_value
+                mock_win.getyx.return_value = (0, 0)
+                mock_screen.getmaxyx.return_value = (20, 60)
+                
+                with patch.object(mock_win, 'getch') as mock_getch:
+                    mock_getch.return_value = None  # Timeout
+                    
+                    result = ui.render_confirmation("Test", default=default_value)
+                    assert result == expected_result, \
+                        f"Timeout with default={default_value} should return {expected_result}, got {result}"

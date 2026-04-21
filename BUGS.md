@@ -1,4 +1,4 @@
-# TODOs.md
+# BUGS.md
 
 ## Analysis Summary
 
@@ -279,4 +279,4 @@ def test_enter_selects_first_option(ui, mock_win):
 ---
 
 **Last Updated:** April 20, 2026  
-**Summary:** 4 TODOs identified - 1 Critical (implementation), 2 High/Medium (quality), 1 Low (documentation). All depend on implementing the new test structure and proper mocking patterns as specified in Testing Strategy.md.
+**Summary:** 4 BUGS identified - 1 Critical (implementation), 2 High/Medium (quality), 1 Low (documentation). All depend on implementing the new test structure and proper mocking patterns as specified in Testing Strategy.md.
