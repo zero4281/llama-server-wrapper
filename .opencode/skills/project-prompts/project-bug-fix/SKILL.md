@@ -1,10 +1,33 @@
 ---
-name: project-complete-todo
-description: Use this skill to select and complete an item from the TODO list.
+name: project-bug-fix
+description: Use this skill to select, implement, verify, and document fixes for items in the Bugs.md file.
 ---
 # Skill Instructions
-Read `./Requirements.md` and `./Plan.md`.
-Read `./Testing Strategy.md`.
-Read `./BUGS.md`.
+instructions: |
+  1. **Preparation**: 
+     - Read `./Requirements.md`, `./Plan.md`,`./Testing Strategy.md`, and `./Bugs.md`.
+     - Parse `./Bugs.md` to build a list of pending tasks. Ignore completed items.
 
-Create a list of items to work on from `./BUGS.md`. Ignore items that are already marked as complete. Ask the user which bug to work on (limit the list to just titles and priority) with AskUserQuestion. Make sure the list indicates the estimated priority and dependencies on other items in the list. Once the user makes a selection delegate the work to @general with the necessary context. After the task is completed verify that the agent completed the work, then mark the item status as complete in `./BUGS.md`. If the completed bug involved changes to source code (not just documentation), run `python3 -m pytest Tests/ -v` and confirm all tests pass before marking the item complete.
+  2. **User Interaction**:
+     - Present the list (titles, priority, and dependencies) to the user via AskUserQuestion.
+     - Wait for the user to select an item.
+
+  3. **Development Environment**:
+     - State the intention to start work on the selected bug to the user.
+
+  4. **Delegation**:
+     - Delegate to @general. 
+     - **Constraint**: You must provide the following context in the prompt: 
+       - The full bug description from `./Bugs.md`.
+       - Relevant files identified from `./Requirements.md`, `./Plan.md`, and `./Testing Strategy.md`.
+       - The expected outcome/behavior.
+
+  5. **Verification & Testing**:
+     - Once @general reports completion, verify:
+       - The changes address the bug (manual inspection of the diff).
+       - Run `python3 -m pytest Tests/ -v`.
+     - **Error Handling**: If tests fail, provide the error output to @general and request a fix. Repeat until tests pass.
+
+  6. **Finalization**:
+     - Create a brief summary of the changes made.
+     - Update `./Bugs.md` to mark the item as complete.

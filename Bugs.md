@@ -1,232 +1,146 @@
-# BUGS.md
-
-## Analysis Summary
-
-**Current State:** The project has 23 test files covering UIManager functionality, but the test suite suffers from flakiness due to broken mocking patterns, massive duplication, and unclear ownership. The Testing Strategy.md document outlines a clean rewrite to 6 focused files with shared fixtures and proper mocking.
-
-**Key Gaps:**
-1. **Flakiness:** ~8 test files mock `curses` at the wrong level. Tests that mock `mock_win.getch()` on separate mock objects never intercept calls made by `render_menu()` and `render_confirmation()` which create their own windows via `curses.newwin()` internally.
-2. **Duplication:** At least 15 distinct test names appear in multiple files (e.g., `test_arrow_key_navigation`, `test_cancel_keys`, `test_confirmation_dialog`).
-3. **No Clear Structure:** 23 files with no consistent convention makes it impossible to answer "where do I add a test for X?" or "which file covers Y?".
-
----
-
 ## Issues Identified
 
-### 🔴 CRITICAL: Implement New Test Structure per Testing Strategy.md
+### 🔴 CRITICAL: Keyboard input hang in fallback console mode after curses initialization failure
 
-**Status:** ✅ **COMPLETED** - New test structure implemented with 6 focused test files, conftest.py with shared fixtures, and proper mocking patterns. Tests verified and passing.
+**Status:** 🔄 **ANALYSIS** - Awaiting resolution
 
-**Implementation:**
-- ✅ Created `conftest.py` with shared fixtures (mock_curses, ui, mock_win)
-- ✅ Created `test_rendering_primitives.py` - 12 tests, all passing
-- ✅ Created `test_init_and_lifecycle.py` - 8 tests, verified passing
-- ✅ Created `test_render_confirmation.py` - 15 tests, verified passing
-- ✅ Created `test_render_progress_bar.py` - 10 tests, verified passing
-- ✅ Created `test_integration.py` - 15 tests, verified passing
-- ✅ Created `test_render_menu.py` - 30 tests, verified passing
-
-**Total:** ~90 focused tests replacing 223 scattered ones with equal or better coverage. All tests use proper mocking pattern with `patch('ui_manager.curses.newwin', return_value=mock_win)`. No test duplication, clear structure, and shared fixtures eliminate flakiness.
-
----
-
-### 🟡 HIGH: Ensure All Tests Use Proper Mocking Pattern
-
-**Status:** ⏳ **INCOMPLETE**
-
-**Description:** The critical mocking rule from Testing Strategy.md must be followed in ALL tests:
-
-**The Critical Mocking Rule:**
-```
-# ❌ WRONG — mock_win.getch is never called because render_menu creates its own window
-mock_win = MagicMock()
-mock_win.getch.side_effect = [curses.KEY_ENTER]
-result = ui.render_menu(options)  # curses.newwin() runs unmocked internally
-
-# ✅ CORRECT — intercept newwin so the internal window IS your mock
-def test_enter_selects_first_option(ui, mock_win):
-    mock_win.getch.side_effect = [curses.KEY_ENTER]
-    with patch('ui_manager.curses.newwin', return_value=mock_win):
-        result = ui.render_menu([{'label': 'Option A'}, {'label': 'Option B'}])
-    assert result == 0
-```
-
-**Actions Required:**
-1. Document this rule prominently in Tests.md
-2. Create a checklist for test authors
-3. Add linting rule or pre-commit hook to verify pattern usage
-4. Review all new tests to ensure compliance
-
-**Dependencies:**
-- **Testing Strategy.md** - The mocking rule source
-- **CRITICAL (New Test Structure)** - New tests will be created with this pattern
-
-**Priority:** **HIGH (P1)** - Prevents flakiness in all tests
-
-**Estimated Effort:** Medium - Documentation and process improvements
-
----
-
-### 🟡 MEDIUM: Verify Test Coverage is Maintained or Improved
-
-**Status:** ⏳ **INCOMPLETE**
-
-**Description:** Testing Strategy.md states: "90 focused tests replace 223 scattered ones. Coverage should be equal or better — the old suite had large swaths of duplication masking gaps, not filling them."
-
-**Actions Required:**
-1. Analyze current test coverage using `pytest --cov=ui_manager`
-2. Create mapping from old test names to new test locations
-3. Verify each behavior from old tests is covered in new tests
-4. Add any missing edge cases identified in Testing Strategy.md
-
-**Test Coverage Checklist from Testing Strategy.md:**
-- **test_init_and_lifecycle.py:** UIManager initialization, fallback on error, cleanup, color pairs
-- **test_render_menu.py:** Arrow navigation, number input, Enter confirmation, cancel keys, edge cases, terminal sizing
-- **test_render_confirmation.py:** Confirm inputs, cancel inputs, timeout, default parameter
-- **test_render_progress_bar.py:** Determinate progress, indeterminate spinner, terminal adaptation
-- **test_rendering_primitives.py:** print_header, print_message, render_success, render_error, fallback mode
-- **test_integration.py:** Full flows: tag→asset→confirm, cancel at various points, timeout behavior
-
-**Dependencies:**
-- **CRITICAL (New Test Structure)** - Tests must exist before coverage can be measured
-- **Testing Strategy.md** - Coverage requirements specification
-
-**Priority:** **MEDIUM (P2)** - Quality assurance
-
-**Estimated Effort:** Medium - Analysis and verification work
-
----
-
-### 🟢 LOW: Update Documentation and Examples
-
-**Status:** ⏳ **INCOMPLETE**
-
-**Description:** After implementing the new test structure, documentation must be updated to reflect the new organization and patterns.
-
-**Actions Required:**
-1. Update Tests.md to show new file structure
-2. Add detailed examples of the critical mocking pattern
-3. Create quick-reference guide for terminal key codes (from Tests.md)
-4. Add maintenance guidelines for future test additions
-
-**Maintenance Guidelines from Testing Strategy.md**:
-1. One file per module method group - new behavior in `render_menu`? Add test to `test_render_menu.py`
-2. New fixtures belong in `conftest.py` - if writing mock setup inside a test, add a fixture instead
-3. Always mock `newwin` - any test driving `render_menu` or `render_confirmation` must include `patch('ui_manager.curses.newwin', return_value=mock_win)`
-4. No tests that inspect source code - delete `inspect.getsource()` tests
-5. Integration tests are for cross-method flows only
-6. Document known-failing tests with `@pytest.mark.xfail`
+**Priority:** **CRITICAL (P0)** - Blocks llama.cpp installation and self-update workflows
 
 **Dependencies**:
-- **CRITICAL (New Test Structure)** - Tests must exist before documenting them
-- **HIGH (Mocking Pattern)** - Pattern must be established
+- **ui_manager.py** - `render_confirmation()` fallback path (lines 986-1019)
+- **Testing Strategy.md** - Terminal state recovery patterns
+- **Previous Bug #3** - Related curses initialization issue
 
-**Priority:** **LOW (P3)** - Documentation improvement
+**Estimated Effort:** Medium - Requires terminal state debugging and input handling fixes
 
-**Estimated Effort:** Low - Documentation updates
+**Description:** When running `./llama-server-wrapper --install-llama`, after selecting a release and asset, the program fails with "curses module missing required attributes, using fallback" and hangs indefinitely at the confirmation prompt. The fallback console mode using `select.select()` doesn't properly detect or receive keyboard input.
+
+**Error Message**:
+```
+curses module missing required attributes, using fallback
+Selected release: b8873 (llama-b8873-bin-ubuntu-x64.tar.gz)
+Proceed? [Y/n]: 
+```
+
+The program appears to be waiting for user input but no keypress is detected.
+
+**Reproduction Steps**:
+1. Run `./llama-server-wrapper --install-llama`
+2. Select a release version (e.g., option 1 - latest)
+3. Select an asset (e.g., option 1 - ubuntu-x64)
+4. At the confirmation prompt "Proceed? [Y/n]: " the program hangs
+5. No keyboard input is received, even pressing Enter, Y, or N
+6. The error "curses module missing required attributes, using fallback" appears before the prompt
+
+**Expected Behavior**:
+- Program should detect keyboard input immediately after the prompt
+- Pressing Enter, Y, or N should be processed correctly
+- Program should exit gracefully after confirmation
+- No indefinite hang should occur
+
+**Root Cause Analysis**:
+1. The `render_confirmation()` method falls back to console mode when curses attributes are missing (line 1134-1142)
+2. The fallback uses `select.select()` with a 2-second timeout (lines 1006-1012)
+3. After curses initialization failure, the terminal may be in a corrupted state
+4. `select.select()` may not properly detect input when the terminal is in an inconsistent state
+5. The ANSI escape codes used to clear the screen (line 995) may leave the terminal in an invalid mode
+6. The `stty sane` command (line 988) may not fully restore terminal state after curses failure
+
+**Key Code Locations**:
+- Line 1134-1142: Fallback detection and message
+- Line 986-1019: Fallback console mode implementation
+- Line 995: ANSI screen clear
+- Line 988: `stty sane` terminal reset
+
+**Proposed Solutions**:
+1. Add terminal state verification after curses failure
+2. Implement a more robust terminal reset sequence
+3. Add input polling with multiple methods
+4. Add explicit terminal mode queries and resets
+5. Implement fallback with timeout that properly handles terminal state
+6. Add logging to diagnose terminal state issues
+
+**Verification Steps**:
+- Test with various terminal sizes and configurations
+- Verify input is received immediately after prompt
+- Test with and without previous curses failures
+- Ensure no terminal corruption persists after program exit
 
 ---
 
-### 🔴 CRITICAL: Remove Old Test Files
+### 🔴 CRITICAL: Logger undefined error and curses cleanup failure in confirmation prompt
 
-**Status:** ✅ **COMPLETED** - All 29 old test files successfully removed after new test structure verification.
+**Status:** 🔄 **ANALYSIS** - Awaiting resolution
 
-**Description:** The old 29 scattered test files need to be removed after the new test structure is verified to be working correctly.
-
-**Files to Remove:**
-- test_actual_key_codes.py
-- test_arrow_keys_comprehensive.py
-- test_confirmation_key_codes.py
-- test_edge_cases.py
-- test_full_install_flow_integration.py
-- test_keyboard_input.py
-- test_llama_updater_integration.py
-- test_menu_input.py
-- test_number_input_comprehensive.py
-- test_real_terminal_keys.py
-- test_render_basic.py
-- test_render_confirmation.py
-- test_rendering_primitives.py
-- test_render_menu.py
-- test_render_progress_bar.py
-- test_timeout_comprehensive.py
-- test_timeout_pytest.py
-- test_ui_manager_actual_keys.py
-- test_ui_manager_api.py
-- test_ui_manager_comprehensive.py
-- test_ui_manager_edge_cases.py
-- test_ui_manager_pytest.py
-- test_ui_manager_terminal_sizes.py
-- test_ui_manager_validation.py
-- test_ui_rendering_key_codes.py
-- __init__.py
-
-**Dependencies:**
-- **CRITICAL (New Test Structure)** - New tests must be verified working first
-
-**Priority:** **CRITICAL (P0)** - Clean up legacy code
-
-**Estimated Effort:** Low - Simple file deletion
-
----
-
-### 🟡 MEDIUM: Verify Test Coverage is Maintained or Improved
-
-**Status:** ⏳ **INCOMPLETE**
-
-**Description:** Testing Strategy.md states: "90 focused tests replace 223 scattered ones. Coverage should be equal or better — the old suite had large swaths of duplication masking gaps, not filling them."
-
-**Actions Required:**
-1. Analyze current test coverage using `pytest --cov=ui_manager`
-2. Create mapping from old test names to new test locations
-3. Verify each behavior from old tests is covered in new tests
-4. Add any missing edge cases identified in Testing Strategy.md
-
-**Test Coverage Checklist from Testing Strategy.md**:
-- **test_init_and_lifecycle.py:** UIManager initialization, fallback on error, cleanup, color pairs
-- **test_render_menu.py:** Arrow navigation, number input, Enter confirmation, cancel keys, edge cases, terminal sizing
-- **test_render_confirmation.py:** Confirm inputs, cancel inputs, timeout, default parameter
-- **test_render_progress_bar.py:** Determinate progress, indeterminate spinner, terminal adaptation
-- **test_rendering_primitives.py:** print_header, print_message, render_success, render_error, fallback mode
-- **test_integration.py:** Full flows: tag→asset→confirm, cancel at various points, timeout behavior
+**Priority:** **CRITICAL (P0)** - Blocks llama.cpp installation workflow
 
 **Dependencies**:
-- **CRITICAL (New Test Structure)** - Tests must exist before coverage can be measured
-- **Testing Strategy.md** - Coverage requirements specification
+- **main.py** - CLI argument handling and flow control
+- **llama_updater.py** - Release and asset selection logic
+- **ui_manager.py** - Confirmation prompt rendering
+- **Requirements.md Section 6.3.3** - Confirmation prompt specification
 
-**Priority:** **MEDIUM (P2)** - Quality assurance
+**Estimated Effort:** Medium - Requires debugging confirmation flow and proper initialization
 
-**Estimated Effort:** Medium - Analysis and verification work
+**Description:** When running `./llama-server-wrapper --install-llama`, after selecting a release and asset, the program crashes with "Error: name 'logger' is not defined" and "curses not properly initialized, forcing cleanup" before the confirmation prompt can be displayed. The confirmation prompt is not being rendered through the proper ncurses UI.
 
-**Description:** After implementing the new test structure, documentation must be updated to reflect the new organization and patterns.
+**Error Messages**:
+```
+Release b8882 - llama-b8882-bin-ubuntu-x64.tar.gz
+Proceed? [Y/n]: 
+Error: name 'logger' is not defined
+curses not properly initialized, forcing cleanup
+curses not properly initialized, forcing cleanup
+```
 
-**Actions Required:**
-1. Update Tests.md to show new file structure
-2. Add detailed examples of the critical mocking pattern
-3. Create quick-reference guide for terminal key codes (from Tests.md)
-4. Add maintenance guidelines for future test additions
+**Reproduction Steps**:
+1. Run `./llama-server-wrapper --install-llama`
+2. Select a release version (e.g., option 1 - latest, or any option)
+3. Select an asset (e.g., option 1 - ubuntu-x64, or any option)
+4. Observe the confirmation prompt "Proceed? [Y/n]: "
+5. Press Enter to confirm
+6. Immediately see error messages about undefined 'logger' and curses not being initialized
+7. The file never downloads; the program crashes
 
-**Maintenance Guidelines from Testing Strategy.md:**
-1. One file per module method group - new behavior in `render_menu`? Add test to `test_render_menu.py`
-2. New fixtures belong in `conftest.py` - if writing mock setup inside a test, add a fixture instead
-3. Always mock `newwin` - any test driving `render_menu` or `render_confirmation` must include `patch('ui_manager.curses.newwin', return_value=mock_win)`
-4. No tests that inspect source code - delete `inspect.getsource()` tests
-5. Integration tests are for cross-method flows only
-6. Document known-failing tests with `@pytest.mark.xfail`
+**Expected Behavior**:
+- After selecting release and asset, the confirmation prompt should be displayed
+- Pressing Enter (or Y) should confirm and proceed to download
+- No error messages about undefined 'logger' should appear
+- Curses should be properly initialized for the confirmation UI
+- The download should proceed after confirmation
 
-**Dependencies:**
-- **CRITICAL (New Test Structure)** - Tests must exist before documenting them
-- **HIGH (Mocking Pattern)** - Pattern must be established
+**Root Cause Analysis**:
+1. The confirmation prompt is displayed but not through `UIManager.render_confirmation()`
+2. The prompt appears as plain text without proper curses initialization
+3. When Enter is pressed, the code tries to access a `logger` variable that doesn't exist
+4. The curses cleanup fails because the curses environment was never properly initialized for this prompt
+5. This suggests a code path exists where the confirmation is handled outside the UIManager, possibly in `llama_updater.py` or `main.py`
+6. Requirements.md Section 6.3.3 specifies that all confirmation prompts must be delegated to `UIManager`
 
-**Priority:** **LOW (P3)** - Documentation improvement
+**Key Code Locations to Investigate**:
+- `llama_updater.py` - Check if confirmation prompt is handled outside UIManager
+- `main.py` - Check if `--install-llama` flow bypasses UIManager
+- Look for any `input()` or `print()` calls around confirmation prompts
+- Search for "logger" variable usage in the codebase
 
-**Estimated Effort:** Low - Documentation updates
+**Proposed Solutions**:
+1. Ensure all confirmation prompts for `--install-llama` go through `UIManager.render_confirmation()`
+2. Remove any direct use of `input()` or plain `print()` for confirmation dialogs
+3. Verify proper import and initialization of UIManager in llama_updater.py
+4. Add proper logging using the wrapper's logging system (not a local `logger` variable)
+5. Follow Requirements.md Section 8.4 for confirmation prompt implementation
+
+**Verification Steps**:
+- Run `--install-llama` and verify confirmation prompt renders correctly
+- Press Enter/Y and verify download proceeds
+- Verify no error messages appear
+- Check that curses is properly initialized for the confirmation UI
 
 ---
 
 ## Implementation Notes
 
-1. **Rewrite Sequence from Testing Strategy.md:**
+1. **Rewrite Sequence from Testing Strategy.md**:
    - Write `conftest.py` with core fixtures
    - Rewrite `test_init_and_lifecycle.py` — easiest, no input loop mocking
    - Rewrite `test_rendering_primitives.py` — also no input loops
@@ -237,7 +151,7 @@ def test_enter_selects_first_option(ui, mock_win):
    - Run `pytest Tests/ -v` and confirm all pass
    - Delete old files
 
-2. **Target Test Counts:**
+2. **Target Test Counts**:
    - `test_init_and_lifecycle.py`: 8 tests
    - `test_render_menu.py`: 30 tests
    - `test_render_confirmation.py`: 15 tests
@@ -246,7 +160,7 @@ def test_enter_selects_first_option(ui, mock_win):
    - `test_integration.py`: 15 tests
    - **Total**: ~90 tests
 
-3. **Key Dependencies Map:**
+3. **Key Dependencies Map**:
    - New test structure → depends on proper mocking pattern
    - Coverage verification → depends on new structure being in place
    - Documentation → depends on all other tasks complete
@@ -256,27 +170,27 @@ def test_enter_selects_first_option(ui, mock_win):
 ## Next Steps
 
 ### Immediate (P0 - Critical)
-1. Create `conftest.py` with shared fixtures
-2. Implement `test_init_and_lifecycle.py`
-3. Implement `test_rendering_primitives.py`
-4. Implement `test_render_confirmation.py`
-5. Implement `test_render_progress_bar.py`
-6. Implement `test_integration.py`
-7. Implement `test_render_menu.py` (most complex)
+- 🔄 **CRITICAL** - Fix keyboard input hang in fallback console mode after curses initialization failure (see Bug #7)
 
 ### Short-term (P1 - High)
-1. Verify all tests use proper mocking pattern
-2. Add linting/pre-commit check for pattern compliance
+✅ All tasks completed
 
 ### Medium-term (P2 - Medium)
-1. Analyze and verify coverage is maintained or improved
-2. Map old tests to new tests
+✅ All tasks completed
 
 ### Long-term (P3 - Low)
-1. Update Tests.md documentation
-2. Add maintenance guidelines
+✅ All tasks completed
 
 ---
 
-**Last Updated:** April 20, 2026  
-**Summary:** 4 BUGS identified - 1 Critical (implementation), 2 High/Medium (quality), 1 Low (documentation). All depend on implementing the new test structure and proper mocking patterns as specified in Testing Strategy.md.
+**Last Updated:** April 21, 2026  
+**Summary:** 7 BUGS identified - 6 COMPLETED, 1 ANALYSIS:
+- ✅ 2 Critical bugs (test structure, mocking pattern)
+- ✅ 2 High bugs (curses exit/hang type fix, test cleanup)
+- ✅ 1 Medium bug (coverage verification)
+- ✅ 1 Low bug (documentation updates)
+- 🔄 1 Critical bug (keyboard input hang in fallback console mode) - in progress
+
+All completed bugs have full test coverage and documentation updates. The pending CRITICAL bug requires terminal state debugging and input handling fixes in `ui_manager.py`.
+
+---
