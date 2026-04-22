@@ -21,6 +21,9 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+# Import logger from ui_manager for consistent logging
+from ui_manager import logger as ui_logger
+
 
 # Constants
 GITHUB_OWNER = "ggml-org"
@@ -690,7 +693,7 @@ def install_release(release: dict, release_tag: str) -> None:
         print("Installation cancelled.")
         return
     
-    logger.info(f"User confirmed installation of {release_tag} - {asset_name}")
+    ui_logger.info(f"User confirmed installation of {release_tag} - {asset_name}")
 
     # Download
     print(f"\nDownloading {selected_asset['name']}...")

@@ -23,6 +23,7 @@ instructions: |
        - The expected outcome/behavior.
 
   5. **Verification & Testing**:
+     - Delegate to @general. 
      - Once @general reports completion, verify:
        - The changes address the bug (manual inspection of the diff).
        - Run `python3 -m pytest Tests/ -v`.
