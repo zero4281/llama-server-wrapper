@@ -21,6 +21,9 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+# Import logger from ui_manager for consistent logging
+from ui_manager import logger as ui_logger
+
 
 # Constants
 GITHUB_OWNER = "ggml-org"
@@ -43,7 +46,9 @@ class RateLimitError(LlamaUpdaterError):
 
 class GitHubAPIError(LlamaUpdaterError):
     """Raised when GitHub API is unreachable."""
-    pass
+    def __init__(self, message: str, reset_time: str = 'unknown'):
+        self.reset_time = reset_time
+        super().__init__(f"GitHub API error: {message}")
 
 
 class DownloadError(LlamaUpdaterError):
@@ -127,23 +132,38 @@ def _get_release_info(url: str) -> dict:
         response = requests.get(url, headers=_get_api_headers(), timeout=30)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.HTTPError as e:
         if hasattr(e, 'response') and e.response is not None:
-            if e.response.status_code == 429:
-                # Rate limited
-                reset_time = e.response.headers.get('X-RateLimit-Reset')
-                reset_ts = int(reset_time) if reset_time else None
-                if reset_ts:
-                    import datetime
-                    reset_dt = datetime.datetime.utcfromtimestamp(reset_ts)
-                    reset_time = reset_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
-                else:
-                    reset_time = 'unknown'
-                raise RateLimitError(reset_time)
-            elif e.response.status_code == 403:
-                raise GitHubAPIError(f"GitHub API forbidden (403). Check your network connection.")
+            status_code = e.response.status_code
+            # Check for rate limit headers in 403/429 responses
+            reset_header = e.response.headers.get('X-RateLimit-Reset')
+            reset_ts = int(reset_header) if reset_header else None
+            reset_dt = None
+            if reset_ts:
+                reset_dt = datetime.datetime.utcfromtimestamp(reset_ts)
+                reset_time = reset_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
             else:
-                raise GitHubAPIError(f"GitHub API error: {e.response.status_code} {e.response.text}")
+                reset_time = 'unknown'
+            
+            if status_code == 429:
+                # Rate limited
+                raise RateLimitError(reset_time)
+            elif status_code == 403:
+                # Check if it's a rate limit 403 (not just forbidden)
+                rate_limit_remaining = e.response.headers.get('X-RateLimit-Remaining')
+                if rate_limit_remaining == '0':
+                    raise RateLimitError(reset_time)
+                # Otherwise it's a generic 403
+                raise GitHubAPIError(
+                    f"GitHub API forbidden (403). "
+                    f"Check your network connection or try again later.",
+                    reset_time=reset_time
+                )
+            else:
+                raise GitHubAPIError(
+                    f"GitHub API error: {status_code} {e.response.text[:200]}",
+                    reset_time=reset_time
+                )
         else:
             raise GitHubAPIError(f"GitHub API unreachable: {e}")
 
@@ -181,7 +201,10 @@ def list_releases() -> List[dict]:
                 break
             releases.extend(page_releases)
             page += 1
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            # Re-raise if it's a rate limit or other significant error
+            if isinstance(e, (RateLimitError, GitHubAPIError)):
+                raise
             break
 
     return releases
@@ -601,114 +624,77 @@ def install_release(release: dict, release_tag: str) -> None:
 
     # Detect platform
     detected_platform, detected_arch = detect_platform()
-    print(f"Detected platform: {detected_platform} {detected_arch}")
-
+    
     # Get available platforms
     available_platforms = get_available_platforms(release)
-    print(f"\nAvailable platforms in this release:")
-    for i, platform_info in enumerate(available_platforms, 1):
-        variant = f" ({platform_info['variant']})" if platform_info['variant'] else ""
-        print(f"  {i}. {platform_info['platform']} {platform_info['arch']}{variant}")
-
-    # Select platform
-    selected_asset = None
     
-    # Find the matching platform info
-    for platform_info in available_platforms:
+    # Prepare platform options for menu
+    platform_options = []
+    for i, platform_info in enumerate(available_platforms, 1):
+        asset_count = len(platform_info['assets'])
+        variant_suffix = " (variant: " + platform_info['variant'] + ")" if platform_info['variant'] else ""
+        platform_entry = {
+            'label': f"{platform_info['platform']} {platform_info['arch']}",
+            'description': f"{asset_count} asset{'' if asset_count == 1 else 's'}" + variant_suffix
+        }
+        platform_options.append(platform_entry)
+    
+    # Use UIManager for platform selection
+    from ui_manager import UIManager
+    
+    ui = UIManager("llama.cpp")
+    
+    # Find the matching platform info for auto-highlight
+    default_platform_idx = None
+    for i, platform_info in enumerate(available_platforms, 1):
         if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
-            selected_asset = platform_info['assets'][0]  # First one is default
+            default_platform_idx = i - 1  # Zero-based index
             break
     
-    # Find the detected platform info
-    selected_platform_info = None
-    detected_idx = None
-    for i, platform_info in enumerate(available_platforms, 1):
-        if platform_info['platform'].lower() == detected_platform.lower() and platform_info['arch'].lower() == detected_arch.lower():
-            selected_platform_info = platform_info
-            detected_idx = i
-            break
-
-    if selected_platform_info:
-        # Found a match - confirm platform selection
-        print(f"\nSelected: {detected_platform} {detected_arch}")
-        
-        # Ask for user confirmation
-        choice = input(f"Select a platform [{detected_idx}]: ").strip()
-        if choice == "":
-            choice = str(detected_idx)
-        try:
-            choice_idx = int(choice) - 1
-            if choice_idx < 0 or choice_idx >= len(available_platforms):
-                print("Invalid choice. Using detected platform.")
-                selected_platform = selected_platform_info
-            else:
-                selected_platform = available_platforms[choice_idx]
-        except (ValueError, IndexError):
-            print("Invalid input. Using detected platform.")
-            selected_platform = selected_platform_info
-        
-        # Show zip files for the selected platform
-        print(f"\nAvailable zip files for {selected_platform['platform']} {selected_platform['arch']}:")
-        for i, asset in enumerate(selected_platform['assets'], 1):
-            is_default = (i == 1)
-            marker = "  ← recommended" if is_default else ""
-            print(f"  {i}. {asset['name']} {marker}")
-        
-        # Show selected release info
-        print(f"\nSelected: {release_tag} ({selected_platform['assets'][0]['name']})")
-        
-        # Ask for zip file selection
-        zip_choice = input(f"\nSelect a zip file [1]: ").strip()
-        if zip_choice == "":
-            zip_choice = "1"
-        try:
-            zip_choice_idx = int(zip_choice) - 1
-            if zip_choice_idx < 0 or zip_choice_idx >= len(selected_platform['assets']):
-                print("Invalid choice. Using first option.")
-                selected_asset = selected_platform['assets'][0]
-            else:
-                selected_asset = selected_platform['assets'][zip_choice_idx]
-        except ValueError:
-            print("Invalid input. Using first option.")
-            selected_asset = selected_platform['assets'][0]
-    else:
-        # No matching platform found - show all assets from release
-        print("\nNo matching platform found. Showing first 5 assets from release...")
-        for i, asset in enumerate(release.get('assets', [])[:5], 1):
-            print(f"  {i}. {asset['name']} ({asset['size']//1024//1024}MB)")
-        
-        choice = input("\nSelect asset [1]: ").strip()
-        if choice == "":
-            choice = "1"
-        choice_idx = int(choice) - 1
-        if choice_idx < 0 or choice_idx >= len(release.get('assets', [])):
-            print("Invalid choice. Using first option.")
-            selected_asset = release['assets'][0] if release.get('assets') else None
-        else:
-            selected_asset = release['assets'][choice_idx]
-
-    if not selected_asset:
-        raise PlatformNotFoundError("No matching platform found in release")
-
-    # Show selected release info
+    # Render platform selection menu
+    selected_platform_idx = ui.render_menu(platform_options, default=default_platform_idx)
+    
+    if selected_platform_idx == -1:
+        print("Platform selection cancelled.")
+        return
+    
+    selected_platform_info = available_platforms[selected_platform_idx]
+    
+    # Prepare zip file options for menu
+    zip_options = []
+    for i, asset in enumerate(selected_platform_info['assets'], 1):
+        is_default = (i == 1)
+        marker = " (default)" if is_default else ""
+        zip_entry = {
+            'label': asset['name'],
+            'description': f"{asset['size']//1024//1024}MB {marker}"
+        }
+        zip_options.append(zip_entry)
+    
+    # Render zip file selection menu
+    selected_zip_idx = ui.render_menu(zip_options, default=0)
+    
+    if selected_zip_idx == -1:
+        print("Zip file selection cancelled.")
+        return
+    
+    selected_asset = selected_platform_info['assets'][selected_zip_idx]
     asset_name = selected_asset['name']
+    
+    #TODO: DEBUG HERE - Add support for curses ui.render_menu or something similar so it doesn't revert to the terminal below.
+    # Show selected release info
     print(f"\nSelected: {release_tag} ({asset_name})")
     
-    # Confirmation prompt using UIManager
-    try:
-        from ui_manager import UIManager
-        
-        ui = UIManager("llama.cpp")
-        confirmed = ui.render_confirmation(
-            f"Release {release_tag} - {asset_name}"
-        )
-        
-        if not confirmed:
-            print("Installation cancelled.")
-            return
-    except ImportError:
-        # UIManager not available, skip confirmation
-        pass
+    # Confirmation prompt
+    confirmed = ui.render_confirmation(
+        f"Release {release_tag} - {asset_name}"
+    )
+    
+    if not confirmed:
+        print("Installation cancelled.")
+        return
+    
+    ui_logger.info(f"User confirmed installation of {release_tag} - {asset_name}")
 
     # Download
     print(f"\nDownloading {selected_asset['name']}...")
@@ -773,15 +759,82 @@ class LlamaUpdater:
         Args:
             interactive: If True, allow manual platform selection
         """
+        from ui_manager import UIManager
+        
+        # Create UI manager for error display
+        ui = UIManager("llama.cpp")
+        
         print("Fetching latest llama.cpp release...")
-        release = get_latest_release()
-        release_tag = release["tag_name"]
+        try:
+            release = get_latest_release()
+            release_tag = release["tag_name"]
+            
+            print(f"Latest release: {release_tag} ({release['name']})")
+            print(f"Published: {release['published_at']}")
+        except RateLimitError as e:
+            ui.render_error(
+                f"GitHub API rate limit exceeded.\n"
+                f"Please wait until: {e.reset_time}\n\n"
+                f"You can try again later or use a different network connection."
+            )
+            return
+        except GitHubAPIError as e:
+            reset_msg = f"\nRetries available after: {e.reset_time}" if e.reset_time != 'unknown' else ""
+            ui.render_error(
+                f"Failed to fetch release information.\n"
+                f"{e}\n\n{reset_msg}"
+            )
+            return
 
-        print(f"Latest release: {release_tag} ({release['name']})")
-        print(f"Published: {release['published_at']}")
+        # Get list of recent releases for tag selection menu
+        releases = list_releases()
+        # Sort by published_at descending and take 5 most recent
+        recent_releases = sorted(releases, key=lambda x: x['published_at'], reverse=True)[:5]
+        
+        # Prepare tag options for menu
+        tag_options = [
+            {'label': 'Enter a tag manually', 'description': ''}
+        ]
+        for i, r in enumerate(recent_releases[1:], 2):
+            tag_options.append({
+                'label': r['tag_name'],
+                'description': 'latest' if r['tag_name'] == release_tag else ''
+            })
+        # Add remaining 2 recent releases to make 5 total
+        for r in recent_releases[1:3]:
+            tag_options.append({
+                'label': r['tag_name'],
+                'description': ''
+            })
+        
+        # Use UIManager for tag selection
+        from ui_manager import UIManager
+        ui = UIManager("llama.cpp")
+        selected_tag_idx = ui.render_menu(tag_options, default=1)
+        
+        if selected_tag_idx == -1:
+            print("Tag selection cancelled.")
+            return
+        elif selected_tag_idx == 0:
+            # Manual entry
+            manual_tag = ui.get_input("Enter release tag: ")
+            if not manual_tag:
+                print("Tag entry cancelled.")
+                return
+            release = get_release_by_tag(manual_tag)
+            if release is None:
+                print(f"Release not found for tag: {manual_tag}")
+                return
+            release_tag = release["tag_name"]
+        else:
+            release = releases[selected_tag_idx - 1]
+            release_tag = release["tag_name"]
 
         # Call install_release which handles platform detection, zip selection, and installation
-        install_release(release, release_tag)
+        if release is not None and release_tag:
+            install_release(release, release_tag)
+        else:
+            print("Installation cancelled or failed to select a valid release.")
 
     def update(self) -> None:
         """
