@@ -1006,14 +1006,19 @@ class UIManager:
         # Check for non-interactive mode or curses failure at the start
         if (not sys.stdin.isatty() and not self._using_curses) or not self._screen:
             logger.warning(f"render_confirmation: stdin is not a TTY and curses not initialized, returning default={default}")
+            # Restore terminal state before returning
+            self._cleanup_terminal()
             return default
         
         # Ensure terminal is reset before displaying prompt
         if not self._using_curses:
             # Use console fallback with robust terminal reset
+            # First cleanup any existing curses state
+            self._cleanup_terminal()
+            
+            # Restore terminal state with comprehensive reset
             import subprocess
             try:
-                # Comprehensive terminal reset sequence
                 # 1. Reset to cooked mode with echo and newline
                 subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                 # 2. Flush all ANSI escape sequences to clear any pending codes
@@ -1127,6 +1132,9 @@ class UIManager:
             # Validate screen and window before proceeding
             if not self._validate_window(self._screen) or not self._validate_window(prompt_win):
                 logger.warning("Screen or window invalid in confirmation, using fallback")
+                # Cleanup terminal state before fallback
+                self._cleanup_terminal()
+                
                 # Comprehensive terminal reset sequence
                 import subprocess
                 try:
@@ -1273,6 +1281,9 @@ class UIManager:
             
             if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
                 logger.warning("curses module missing required attributes, using fallback")
+                # Cleanup terminal state before fallback
+                self._cleanup_terminal()
+                
                 # Restore terminal state with robust reset
                 import subprocess
                 try:
@@ -1383,6 +1394,9 @@ class UIManager:
                                 # Recovery failed, fallback to console
                                 pass
                         
+                        # Cleanup terminal state before fallback
+                        self._cleanup_terminal()
+                        
                         # Fallback to console with robust reset
                         print("\033[2J\033[1;1H\n", end="")
                         sys.stdout.flush()
@@ -1412,7 +1426,8 @@ class UIManager:
                         return False
                     except Exception as recovery_error:
                         logger.error(f"Recovery failed: {recovery_error}")
-                        # Final fallback - just use simple input
+                        # Final fallback - cleanup and use simple input
+                        self._cleanup_terminal()
                         print("\033[2J\033[1;1H\n", end="")
                         sys.stdout.flush()
                         print(f"\n{message}")
@@ -1463,11 +1478,8 @@ class UIManager:
             return False
         except curses.error as e:
             logger.error(f"Confirmation window error: {e}")
-            # If curses fails during input, clean up and return with robust reset
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Cleanup terminal state
+            self._cleanup_terminal()
             # Fallback to console with robust reset
             print("\033[2J\033[1;1H\n", end="")
             sys.stdout.flush()
@@ -1497,10 +1509,8 @@ class UIManager:
             return False
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during confirmation: {e}")
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
+            # Cleanup terminal state
+            self._cleanup_terminal()
             # Fallback to console with robust reset
             print("\033[2J\033[1;1H\n", end="")
             sys.stdout.flush()

@@ -681,6 +681,7 @@ def install_release(release: dict, release_tag: str) -> None:
     selected_asset = selected_platform_info['assets'][selected_zip_idx]
     asset_name = selected_asset['name']
     
+    #TODO: DEBUG HERE - Add support for curses ui.render_menu or something similar so it doesn't revert to the terminal below.
     # Show selected release info
     print(f"\nSelected: {release_tag} ({asset_name})")
     
