@@ -33,4 +33,5 @@ instructions: |
 
   5. **Finalization**:
      - Once approved, append the new item to the 'Current Bug Reports' section of `./Bugs.md`.
+     - Once approved, update the 'Project Roadmap' section of `./Bugs.md`.
      - Confirm to the user that the bug has been tracked and is ready for the `project-bug-fix` process.

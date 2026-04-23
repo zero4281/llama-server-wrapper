@@ -609,14 +609,19 @@ def delete_existing_installation() -> None:
         raise LlamaUpdaterError(f"Failed to delete existing llama-cpp folder: {e}")
 
 
-def install_release(release: dict, release_tag: str) -> None:
+def install_release(release: dict, release_tag: str, ui_manager: Optional["UIManager"] = None) -> None:
     """
     Install a llama.cpp release.
 
     Args:
         release: Release data dictionary
         release_tag: Release tag for reference
+        ui_manager: UIManager instance for UI operations
     """
+    from ui_manager import UIManager
+    
+    ui = ui_manager if ui_manager is not None else UIManager("llama.cpp")
+    
     print(f"Installing llama.cpp release {release_tag}...")
 
     # Delete existing installation first
@@ -638,11 +643,6 @@ def install_release(release: dict, release_tag: str) -> None:
             'description': f"{asset_count} asset{'' if asset_count == 1 else 's'}" + variant_suffix
         }
         platform_options.append(platform_entry)
-    
-    # Use UIManager for platform selection
-    from ui_manager import UIManager
-    
-    ui = UIManager("llama.cpp")
     
     # Find the matching platform info for auto-highlight
     default_platform_idx = None
@@ -752,17 +752,18 @@ class LlamaUpdater:
         self.owner = GITHUB_OWNER
         self.repo = GITHUB_REPO
 
-    def install(self, interactive: bool = False) -> None:
+    def install(self, interactive: bool = False, ui_manager: Optional["UIManager"] = None) -> None:
         """
         Install the latest llama.cpp release.
 
         Args:
             interactive: If True, allow manual platform selection
+            ui_manager: Optional UIManager instance to use for all UI operations
         """
         from ui_manager import UIManager
         
-        # Create UI manager for error display
-        ui = UIManager("llama.cpp")
+        # Create UI manager for error display if not provided
+        ui = ui_manager if ui_manager is not None else UIManager("llama.cpp")
         
         print("Fetching latest llama.cpp release...")
         try:
@@ -832,7 +833,7 @@ class LlamaUpdater:
 
         # Call install_release which handles platform detection, zip selection, and installation
         if release is not None and release_tag:
-            install_release(release, release_tag)
+            install_release(release, release_tag, ui)
         else:
             print("Installation cancelled or failed to select a valid release.")
 

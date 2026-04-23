@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Development Plan
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Date:** April 2026  
 **Author:** zero4281
 
@@ -8,69 +8,46 @@
 
 ## 1. Current State Assessment
 
-### ⚠️ Requirements Compliance
+### ✅ Requirements Compliance
 
-**Partial Implementation (v1.1):**
+**Fully Implemented:**
 
-The codebase **has implemented the interactive logic** for v1.1. The ncurses UI module (`ui_manager.py`) is missing, and `llama_updater.py` confirmation flow was incomplete but has now been fixed:
-
-**Implemented (v1.0):**
 - **Section 2 (Project Structure)**: All files present and correctly organized
 - **Section 3 (Configuration)**: Auto-generation working, options/logging sections implemented
 - **Section 4 (Start Script)**: Bash script functional with venv check
 - **Section 5 (Main Entry)**: All CLI flags implemented, self-update with source selection and confirmation
 - **Section 6 (llama_updater)**: GitHub API, platform detection, download/extraction functional
 - **Section 7 (Run Script)**: Process execution, PID management, graceful shutdown complete
-- **Section 8 (Non-Functional)**: Cross-platform, error handling, PEP 8 compliance verified
-
-**Partially Implemented (v1.1):**
-- **Section 5.3 (Self-update)**: Interactive source selection (Options 1-3) and confirmation prompt implemented in main.py, but using basic print/input instead of ncurses/UIManager
-- **Section 6.3 (llama_updater)**: Missing user confirmation prompt for install/update
-- **Section 8 (CLI UI Module)**: ui_manager.py **NOT IMPLEMENTED** - Required ncurses module is missing
+- **Section 8 (CLI UI Module)**: **ui_manager.py implemented** - ncurses-based UI with menus, prompts, and progress bars
+- **Section 9 (Non-Functional)**: Cross-platform, error handling, PEP 8 compliance verified
 
 ### ✅ Implementation Verification
-
-| Component | Requirements | Verification | Status |
-|-----------|--------------|--------------|--------|
-| **main.py** | CLI flags, self-update with UI, startup sequence | All flags implemented; self-update has source selection (Options 1-3) and confirmation, but uses print/input instead of ncurses | ⚠️ Partial |
-| **llama_updater.py** | GitHub API, rate-limit handling, platform detection | API v2022-11-28 headers; 403/429 handling; asset parsing for all platforms; missing confirmation prompt | ✅ Complete |
-| **runner.py** | Process execution, PID files, graceful shutdown | SIGTERM→60s wait→SIGKILL; TerminateProcess on Windows; exit code 1 if force-kill | ✅ Complete |
-| **wrapper_config.py** | Config loading, auto-generation, logging | Creates default config; supports file/null logging; level filtering | ✅ Complete |
-| **llama-server-wrapper** | Venv check, argument forwarding | Checks .venv/bin/activate; forwards all args to main.py | ✅ Complete |
-| **config.json** | Auto-generation, structure | Generated with options/llama-server.options/logging sections | ✅ Complete |
-| **requirements.txt** | Dependencies | requests>=2.28.0 only | ✅ Complete |
-| **ui_manager.py** | ncurses CLI UI module | **MISSING** - Required by Section 8 | ❌ Missing |
-| **requirements.txt** | Dependencies | requests>=2.28.0 only | ✅ Complete |
 
 | Component | Requirements | Status |
 |-----------|--------------|--------|
 | **main.py** | CLI parsing, all flags, self-update, startup sequence | ✅ Complete |
-| **llama_updater.py** | GitHub API, platform detection, download/extraction | ✅ Complete |
+| **llama_updater.py** | GitHub API, platform detection, download/extraction, ncurses UI | ✅ Complete |
 | **runner.py** | Process execution, PID management, graceful shutdown | ✅ Complete |
 | **wrapper_config.py** | Config loading, auto-generation, logging | ✅ Complete |
 | **llama-server-wrapper** | Entry point, venv check, argument forwarding | ✅ Complete |
 | **config.json** | Auto-generation, structure | ✅ Complete |
 | **requirements.txt** | Dependencies | ✅ Complete |
+| **ui_manager.py** | ncurses CLI UI module (menus, prompts, progress bars) | ✅ Complete |
 
-### ⚠️ Implementation Notes
+### ✅ Implementation Notes
 
-1. **File naming**: Main entry point is `main.py` (not `main_wrapper.py` as mentioned in v1.1)
-2. **Self-update implementation**: Uses GitHub API to fetch releases, presents Options 1-3 menu, and shows confirmation prompt. However, it uses basic `print/input()` instead of ncurses/UIManager
-3. **llama_updater.py**: Functional for download/install. Confirmation prompt now implemented (Section 6.3) - fixed in TODO 6
-4. **ui_manager.py**: **NOT IMPLEMENTED** - The ncurses UI module required by Section 8 is completely missing
+1. **File naming**: Main entry point is `main.py` (consistent with Requirements.md)
+2. **Self-update implementation**: Uses GitHub API to fetch releases, presents Options 1-3 menu with ncurses/UIManager
+3. **llama_updater.py**: Complete with interactive release tag selection, platform detection, zip file selection, and confirmation prompts
+4. **ui_manager.py**: Fully implemented ncurses UI module with:
+   - Numbered menu rendering with arrow key navigation
+   - Confirmation prompts with Y/n handling
+   - Progress bars with percentage and byte counts
+   - Spinner animation for indeterminate progress
+   - Proper initialization and cleanup
+   - Fallback to console output if curses fails
 5. **Config auto-generation**: Creates default `config.json` with required structure if missing
-
-### 🚧 Missing v1.1 Requirements
-
-**Self-update (`--self-update`) - Section 5.3:**
-- **Missing**: Interactive source selection menu (Options 1-3: Latest release, Previous release, Repository HEAD)
-- **Missing**: Confirmation prompt after source selection ("Selected: ... Proceed with update? [Y/n]:")
-- **Missing**: Default option (1) selection when user presses Enter
-
-**llama.cpp Install/Update - Section 6.3:**
-- **Missing**: Confirmation prompt before installation ("Selected release: ... Proceed with installation? [Y/n]:")
-- **Missing**: Default option (Enter = proceed) handling
-- **Missing**: Explicit opt-out (n = cancel) handling
+6. **All UI output**: Rendered through UIManager from ui_manager.py with black background and green text as required
 
 ---
 

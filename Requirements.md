@@ -1,6 +1,6 @@
 # Llama Server Wrapper — Software Requirements Document
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Date:** April 2026  
 **Repository:** https://github.com/zero4281/llama-server-wrapper
 
@@ -136,6 +136,7 @@ Controls verbosity and destination of the wrapper's own log output (separate fro
 - All logic must be encapsulated in a class within an appropriate namespace (e.g. `llama_wrapper.Main`).
 - The `if __name__ == '__main__'` block must only instantiate the class and call its `run` method.
 - All interactive output (menus, prompts, progress, confirmations) must be delegated to `UIManager` from `ui_manager.py`.
+- **The entire interactive workflow must remain within the curses environment.** Once `UIManager` initialises the curses session, no output may be written to stdout or stderr directly. Every menu, prompt, confirmation dialog, progress update, success message, and error message must be rendered through `UIManager` without exception. Plain-text output to the terminal is only permitted for messages emitted *before* `UIManager` is constructed (e.g. the WSL detection warning in Section 5.1.1, which is explicitly printed to stderr before curses initialisation, and the Bash-level venv check in Section 4.2, which never enters the Python process at all).
 
 ### 5.1.1 WSL detection
 
@@ -181,28 +182,32 @@ Choice [1]:
 
 #### 5.3.2 Confirmation prompt
 
-After the user selects a source, display the resolved version or commit reference via `UIManager` and prompt for confirmation before modifying any local files:
+After the user selects a source, `UIManager` must render a bordered curses window displaying the resolved version or commit reference and prompt for confirmation before modifying any local files. This prompt must **not** drop out of the curses environment; it must be rendered entirely through `UIManager` consistent with Section 8.4. Example layout:
 
 ```
-Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip)
-Proceed with update? [Y/n]:
++-----------------------------------------------------+
+| Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip) |
+| Proceed with update? [Y/n]:                         |
++-----------------------------------------------------+
 ```
 
 For a HEAD update the label should reflect the branch rather than a release tag, e.g.:
 
 ```
-Selected: main branch HEAD
-Proceed with update? [Y/n]:
++------------------------------------+
+| Selected: main branch HEAD         |
+| Proceed with update? [Y/n]:        |
++------------------------------------+
 ```
 
-Pressing Enter confirms (default yes). Entering `n` cancels and exits with status code `0` without modifying any files.
+Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits with status code `0` without modifying any files.
 
 #### 5.3.3 Update execution
 
 - Download the selected archive or branch ZIP to a temporary location.
 - Replace local project files with the downloaded versions.
 - After a successful update, restart `main.py` with the same arguments that were originally passed.
-- If the download or file replacement fails, print an error message and exit with a non-zero status code. Local files must not be left in a partially modified state; restore originals if replacement has already begun.
+- If the download or file replacement fails, display an error via `UIManager` and exit with a non-zero status code. Local files must not be left in a partially modified state; restore originals if replacement has already begun.
 
 ### 5.4 Startup sequence
 
@@ -212,10 +217,12 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 4. If `--install-llama` or `--update-llama`: instantiate `LlamaUpdater` and call the appropriate method; exit on completion.
 5. If `--stop-server`: signal `runner.py` to stop `llama-server`; exit on completion.
 6. Otherwise: check whether the `./llama-cpp` directory exists.
-   - If it **does not exist**, print a message prompting the user to install llama.cpp and exit with a non-zero status code:
+   - If it **does not exist**, display the following error via `UIManager` (bordered curses window) and exit with a non-zero status code:
      ```
-     llama-cpp not found. Please install it first:
-       llama-server-wrapper --install-llama
+     +------------------------------------------------+
+     | llama-cpp not found. Please install it first:  |
+     |   llama-server-wrapper --install-llama         |
+     +------------------------------------------------+
      ```
    - If it **exists**, load `config.json`, merge pass-through args, and invoke `Runner`.
 
@@ -301,14 +308,16 @@ If auto-detection fails (platform or architecture cannot be determined), no opti
 
 #### 6.3.3 Confirmation prompt
 
-After the user selects a release tag and asset, display both via `UIManager` and prompt for confirmation before downloading anything:
+After the user selects a release tag and asset, `UIManager` must render a bordered curses window displaying both selections and prompt for confirmation before downloading anything. This prompt must **not** drop out of the curses environment; it must be rendered entirely through `UIManager` consistent with Section 8.4. Example layout:
 
 ```
-Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip)
-Proceed with installation? [Y/n]:
++----------------------------------------------------------+
+| Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) |
+| Proceed with installation? [Y/n]:                        |
++----------------------------------------------------------+
 ```
 
-Pressing Enter confirms (default yes). Entering `n` cancels and exits with status code `0` without modifying any files.
+Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits with status code `0` without modifying any files.
 
 ### 6.4 Platform & architecture detection
 
@@ -320,19 +329,19 @@ Pressing Enter confirms (default yes). Entering `n` cancels and exits with statu
 
 - Download the selected release archive (`.zip` or `.tar.gz`) using the asset's `browser_download_url`.
 - Display a ncurses progress bar (rendered via `UIManager`) during the download so the user can track progress.
-- **Checksum verification:** After the download completes, check whether the release provides a checksum file (e.g. `sha256sum.txt` or a similarly named asset). If one is present, download it and verify the archive before proceeding. If verification fails, delete the downloaded archive, print a clear error message, and exit with a non-zero status code.
+- **Checksum verification:** After the download completes, check whether the release provides a checksum file (e.g. `sha256sum.txt` or a similarly named asset). If one is present, download it and verify the archive before proceeding. If verification fails, delete the downloaded archive, display a clear error via `UIManager`, and exit with a non-zero status code.
 - If no checksum asset is available for the release, skip verification and proceed directly to extraction.
 - Decompress and extract the full archive contents — all binaries and supporting files — into the `./llama-cpp/` folder in the **same directory as the script**.
 - If a `./llama-cpp/` folder already exists, delete it entirely before extraction without prompting or creating a backup.
 - Ensure `llama-server` (or `llama-server.exe` on Windows) is executable after extraction.
 - Remove the downloaded archive file after successful extraction.
-- After a successful install, print a success message and run a quick sanity check by executing `llama-server --version` and displaying its output. If the sanity check fails, print a warning but still exit with status code `0` (the binaries were installed; the version check is informational).
+- After a successful install, display a success message via `UIManager` and run a quick sanity check by executing `llama-server --version` and displaying its output through `UIManager`. If the sanity check fails, display a warning via `UIManager` but still exit with status code `0` (the binaries were installed; the version check is informational).
 
 ### 6.6 Error handling
 
-- Handle `403` and `429` responses from the GitHub API as rate-limit errors; print a clear message including the `X-RateLimit-Reset` time if present in the response headers.
-- If the GitHub API is otherwise unreachable, print a clear error and exit with a non-zero status.
-- If the download fails or the archive is corrupt, clean up any partial files and report the error.
+- Handle `403` and `429` responses from the GitHub API as rate-limit errors; display a clear message via `UIManager` including the `X-RateLimit-Reset` time if present in the response headers.
+- If the GitHub API is otherwise unreachable, display a clear error via `UIManager` and exit with a non-zero status.
+- If the download fails or the archive is corrupt, clean up any partial files and report the error via `UIManager`.
 
 ---
 
@@ -409,8 +418,9 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 ### 8.4 Confirmation prompts
 
-- Render as a single-line prompt in a bordered window: `Proceed? [Y/n]:`.
+- Render as a bordered curses window containing a status line (the resolved selection being confirmed) followed by a prompt line: `Proceed? [Y/n]:`.
 - `Y` / Enter confirms; `n` / `Esc` cancels.
+- Must never drop out of the curses environment; all rendering goes through `UIManager`.
 
 ### 8.5 Progress bar
 
@@ -422,6 +432,7 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 ### 8.6 Lifecycle
 
 - `UIManager` must initialise the `curses` environment (`curses.initscr`, colour setup, `cbreak`, `noecho`, hidden cursor) on construction and restore the terminal to its original state on destruction or on any unhandled exception, ensuring the terminal is never left in a broken state.
+- The `UIManager` instance must remain active and the curses session must remain open for the **entire duration** of the program's interactive workflow — from first menu to final success/error message. The curses session must not be torn down and re-entered mid-workflow; `UIManager` is constructed once and destroyed once.
 
 ---
 
@@ -467,6 +478,7 @@ Shutdown is triggered by either a `SIGINT` / `KeyboardInterrupt` (Ctrl+C) or the
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.5 | April 2026 | zero4281 | Clarified that the entire interactive workflow must remain within the curses environment after UIManager initialisation; no stdout/stderr output is permitted post-init. Updated confirmation prompts in §5.3.2 and §6.3.3 to show curses bordered window layout. Updated §5.4 llama-cpp-not-found error, §5.3.3 update failure error, §6.5 success/warning messages, and §6.6 API error messages to use UIManager instead of direct print calls. Strengthened §8.4 and §8.6 to require UIManager to remain active for the full workflow duration. |
 | 1.4 | April 2026 | zero4281 | Added ncurses CLI UI module (`ui_manager.py`, Section 8); all menus, prompts, and progress bars rendered with black background and green text; Windows now requires WSL with runtime detection warning; updated cross-platform and dependency requirements accordingly |
 | 1.3 | April 2026 | zero4281 | Removed `--foreground` command-line option |
 | 1.2 | April 2026 | zero4281 | Expanded Section 6 install workflow: interactive release tag + asset selection with auto-detected recommendation, all-assets display, checksum verification, download progress bar, delete-and-replace of existing llama-cpp folder, post-install success message and sanity check |

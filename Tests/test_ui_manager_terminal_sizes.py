@@ -458,3 +458,42 @@ def test_window_width_calculation_and_cap():
         ui._cleanup_terminal()
     
     print("  ✓ Window width calculation test passed")
+
+
+def test_wrap_at_exact_boundary():
+    """Test wrap behavior at exact boundary positions.
+    
+    UP from option 0 should wrap to option 2 when there are 3 options.
+    """
+    ui, mock_curses = setup_ui_for_size(80, 24)
+    
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (24, 80)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+         patch('builtins.input', return_value='\n'):
+        
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+        mock_win.getch.return_value = curses.KEY_RESIZE
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
+        
+        # Test with exactly 3 options
+        options = [{'label': 'Option'} for _ in range(3)]
+        
+        # Simulate pressing UP key when highlighted is at position 0
+        # This should wrap to position 2
+        mock_win.getch.side_effect = [curses.KEY_UP, 10]  # UP arrow key
+        result = ui.render_menu(options, default=0, highlighted=0)
+        
+        # Should wrap to option 2
+        assert result == 2, f"UP from option 0 should wrap to option 2, got {result}"
+    
+    ui._cleanup_terminal()
+    print("  ✓ Wrap at exact boundary test passed")

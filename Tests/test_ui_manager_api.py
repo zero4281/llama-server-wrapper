@@ -53,14 +53,28 @@ def test_color_pair_setup():
     """Test that color pairs are set up correctly."""
     print("[2/5] Testing color pair setup...")
     
+    # Create a proper mock that behaves like the real curses module
     with patch('ui_manager.curses') as mock_curses:
+        # Set up the mock to return actual curses constants
         mock_curses.initscr.return_value = MagicMock()
         mock_curses.start_color = MagicMock()
-        mock_curses.init_pair = MagicMock(return_value=None)
         mock_curses.cbreak = MagicMock(return_value=True)
         mock_curses.noecho = MagicMock()
         mock_curses.curs_set = MagicMock(return_value=None)
         mock_curses.has_ungetch = MagicMock(return_value=False)
+        
+        # Make init_pair track calls and return actual constants
+        call_count = [0]
+        def mock_init_pair(pair_num, color1, color2):
+            call_count[0] += 1
+            return None
+        
+        # Set up the mock to have attributes that return actual constants
+        mock_curses.COLOR_GREEN = curses.COLOR_GREEN
+        mock_curses.COLOR_BLACK = curses.COLOR_BLACK
+        mock_curses.COLOR_WHITE = curses.COLOR_WHITE
+        
+        mock_curses.init_pair.side_effect = mock_init_pair
         
         ui = UIManager("Test")
         
@@ -71,14 +85,14 @@ def test_color_pair_setup():
         # First call: color pair 1 (green on black)
         first_call = calls[0][0]
         assert first_call[0] == 1, "First call should use color pair 1"
-        assert first_call[1] == mock_curses.COLOR_GREEN, "First call should use COLOR_GREEN"
-        assert first_call[2] == mock_curses.COLOR_BLACK, "First call should use COLOR_BLACK"
+        assert first_call[1] == curses.COLOR_GREEN, "First call should use COLOR_GREEN"
+        assert first_call[2] == curses.COLOR_BLACK, "First call should use COLOR_BLACK"
         
         # Second call: color pair 2 (white on black)
         second_call = calls[1][0]
         assert second_call[0] == 2, "Second call should use color pair 2"
-        assert second_call[1] == mock_curses.COLOR_WHITE, "Second call should use COLOR_WHITE"
-        assert second_call[2] == mock_curses.COLOR_BLACK, "Second call should use COLOR_BLACK"
+        assert second_call[1] == curses.COLOR_WHITE, "Second call should use COLOR_WHITE"
+        assert second_call[2] == curses.COLOR_BLACK, "Second call should use COLOR_BLACK"
     
     print("  PASSED")
 
