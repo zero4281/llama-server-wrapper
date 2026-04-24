@@ -3,7 +3,7 @@
 ## Current Bug Reports
 
 ### 🆕 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** 🆕 **NEW**
+**Status:** ✅ **FIXED**
 **Priority:** **P3** - Cosmetic issue; debugging impaired
 
 **Description:**

@@ -67,14 +67,32 @@ import curses
 import sys
 import time
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 # Logging configuration
-UI_MANAGER_DEBUG = False
-UI_MANAGER_LOG_LEVEL = logging.INFO
+UI_MANAGER_DEBUG = os.environ.get("UI_MANAGER_DEBUG", "0").lower() in ("1", "true")
+UI_MANAGER_LOG_LEVEL = logging.DEBUG if UI_MANAGER_DEBUG else logging.INFO
+
+
+def _configure_logging():
+    """Configure logging for UIManager."""
+    if not logger.handlers:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(UI_MANAGER_LOG_LEVEL)
+
+
+# Configure logging at module load time
+_configure_logging()
 
 
 def enable_debug_mode():
@@ -89,19 +107,6 @@ def enable_debug_mode():
         handler.setLevel(logging.DEBUG)
     else:
         _configure_logging()
-
-def _configure_logging():
-    """Configure logging for UIManager."""
-    ui_logger = logging.getLogger("ui_manager")
-    if not ui_logger.handlers:
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
-        ui_logger.addHandler(handler)
-        ui_logger.setLevel(UI_MANAGER_LOG_LEVEL)
 
 
 class UIManagerError(Exception):
