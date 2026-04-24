@@ -1041,13 +1041,7 @@ class UIManager:
         """
         start_time = time.time()
         
-        # Check for non-interactive mode or curses failure at the start
-        if (not sys.stdin.isatty() and not self._using_curses) or not self._screen:
-            return self._render_confirmation_fallback(message, default)
-        
-        if not self._using_curses:
-            return self._render_confirmation_fallback(message, default)
-        
+        # Validate screen and window upfront
         if not self._screen:
             return self._render_confirmation_fallback(message, default)
         
@@ -1102,10 +1096,6 @@ class UIManager:
             prompt_win.refresh()
             self._screen.refresh()
             
-            # Validate screen and window before proceeding
-            if not self._validate_window(self._screen) or not self._validate_window(prompt_win):
-                logger.warning("Screen or window invalid in confirmation, using fallback")
-                return self._render_confirmation_fallback(message, default)
             
             # Input handling
             logger.debug("Starting confirmation input loop")
@@ -1144,15 +1134,6 @@ class UIManager:
             
             confirm_redraw()
             
-            # Validate curses and terminal before input loop
-            if not self._validate_window(prompt_win):
-                logger.warning("Prompt window validation failed before input loop, using fallback")
-                return self._render_confirmation_fallback(message, default)
-            
-            if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
-                logger.warning("curses module missing required attributes, using fallback")
-                return self._render_confirmation_fallback(message, default)
-            
             # Input loop with timeout
             while True:
                 # Check for timeout
@@ -1165,88 +1146,7 @@ class UIManager:
                     key = prompt_win.getch()
                 except (curses.error, OSError, EOFError) as e:
                     logger.error(f"Confirmation getch() error: {e}")
-                    # Try recovery with robust terminal reset
-                    try:
-                        # First attempt recovery with terminal reset
-                        import subprocess
-                        try:
-                            subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                            subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        except:
-                            pass
-                        
-                        if self._validate_window(prompt_win):
-                            try:
-                                prompt_win.refresh()
-                                key = prompt_win.getch()
-                                if key is not None:
-                                    logger.debug(f"Recovery successful, got key={key}")
-                                    # Continue with the recovered key
-                                    if key in (27, curses.KEY_RESIZE, curses.KEY_BACKSPACE):
-                                        self._screen.erase()
-                                        return False
-                                    elif key in (10, 13, curses.KEY_ENTER):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return True
-                                    elif key in (ord('y'), ord('Y')):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return True
-                                    elif key in (ord('n'), ord('N')):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return False
-                                    # Timeout - assume default (yes)
-                                    self._screen.erase()
-                                    self._screen.refresh()
-                                    return True
-                            except:
-                                # Recovery failed, fallback to console
-                                pass
-                        
-                        # Cleanup terminal state before fallback
-                        self._cleanup_terminal()
-                        
-                        # Fallback to console with robust reset
-                        print("\033[2J\033[1;1H\n", end="")
-                        sys.stdout.flush()
-                        print(f"\n{message}")
-                        print("Proceed? [Y/n]: ", end="", flush=True)
-                        
-                        try:
-                            # Use multiple input methods
-                            if sys.stdin.isatty():
-                                import select
-                                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                                if ready:
-                                    response = sys.stdin.readline().strip().lower()
-                                else:
-                                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                                    if ready:
-                                        response = sys.stdin.readline().strip().lower()
-                                    else:
-                                        response = ""
-                            else:
-                                response = sys.stdin.readline().strip().lower()
-                        except:
-                            response = ""
-                        
-                        if response in ('', 'y', 'yes'):
-                            return True
-                        return False
-                    except Exception as recovery_error:
-                        logger.error(f"Recovery failed: {recovery_error}")
-                        # Final fallback - cleanup and use simple input
-                        self._cleanup_terminal()
-                        print("\033[2J\033[1;1H\n", end="")
-                        sys.stdout.flush()
-                        print(f"\n{message}")
-                        print("Proceed? [Y/n]: ", end="", flush=True)
-                        response = input().strip().lower()
-                        if response in ('', 'y', 'yes'):
-                            return True
-                        return False
+                    raise
 
                 # Handle key input
                 if key is None:
@@ -1287,15 +1187,9 @@ class UIManager:
                 self._screen.refresh()
                 return True
             return False
-        except curses.error as e:
-            logger.error(f"Confirmation window error: {e}")
-            return self._render_confirmation_fallback(message, default)
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during confirmation: {e}")
             return self._render_confirmation_fallback(message, default)
-        finally:
-            elapsed = time.time() - start_time
-            logger.debug(f"render_confirmation exit: returned={True}, elapsed={elapsed:.2f}s")
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
                           percent: Optional[float] = None) -> None:
