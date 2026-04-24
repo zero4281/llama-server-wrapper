@@ -68,17 +68,62 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 
 ---
 
+### 🟠 HIGH: render_confirmation() fallback prints directly to terminal, breaking curses environment
+**Status:** 🟠 **NEW**
+**Priority:** **P2** - Critical behavior violation; requirements non-compliance
+
+**Description:**
+The fallback implementation in `render_confirmation()` (lines 1282-1343 of ui_manager.py) uses `print()` statements instead of curses rendering when curses attributes are missing or when falling back to console output. This causes the terminal to drop out of the curses environment and display raw text directly, violating Requirements.md §8.4 which states: "Must never drop out of the curses environment; all rendering goes through UIManager."
+
+The specific issue is on line 1312:
+```python
+print("Proceed? [Y/n]: ", end="", flush=True)
+```
+
+This fallback path is triggered when the curses window cannot be created or when `_screen` is `None`, but it still prints to stdout/stderr instead of using the proper fallback methods (`print_header()`, `print_message()`) that are designed for console output.
+
+**Reproduction Steps:**
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+2. Provide inputs: `1\n8\n3\n`
+3. Observe the terminal dropping out of curses and displaying the print message on line 1312
+
+**Affected Components:**
+- ui_manager.py (render_confirmation method, fallback section lines 1282-1343)
+- Requirements.md §8.4 (curses environment requirement)
+
+**Why This Matters:**
+1. Directly violates Requirements.md §8.4 - the entire interactive workflow must remain within curses
+2. Inconsistent with other fallback implementations that use `print_header()` and `print_message()`
+3. Creates a poor user experience with raw text instead of styled console output
+4. May cause issues in environments where stdout/stderr handling is different
+5. Contradicts the design principle that all UI output goes through UIManager
+
+**Suggested Fix:**
+Replace the `print()` statement on line 1312 with a call to `print_message()`:
+```python
+print_message("Proceed? [Y/n]: ", end="")
+```
+
+This would maintain consistency with other fallback paths and ensure the console output is styled appropriately.
+
+**Dependencies:**
+- Requirements.md §8.4 (curses environment requirement)
+- Testing Strategy.md (fallback behavior expectations)
+
+---
+
 ## Project Roadmap
 
 | Priority | Task | Status |
 | :--- | --- | --- |
 | **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🔴 New |
+| **P2 (High)** | render_confirmation() fallback prints directly to terminal, breaking curses environment | 🟠 New |
 
 ---
 
 ## Summary
 
-**Last Updated:** April 23, 2026
-**Overall Status:** 1 New bug identified; all previously logged issues have been resolved.
+**Last Updated:** April 24, 2026
+**Overall Status:** 2 New bugs identified; all previously logged issues have been resolved.
 
 * **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, terminal input handling, and logger debug messages.
