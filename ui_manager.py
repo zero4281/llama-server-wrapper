@@ -460,9 +460,15 @@ class UIManager:
         Returns:
             True if terminal is in cbreak mode, False otherwise
         """
-        # Skip this check entirely - always assume terminal needs setup
-        # This prevents terminal state corruption
-        return False
+        # Use non-blocking read to check terminal state
+        try:
+            self._screen.nodelay(True)
+            key = self._screen.getch()
+            self._screen.nodelay(False)
+            # KEY_RESIZE (27) indicates cbreak mode
+            return key == curses.KEY_RESIZE or key == 27
+        except (curses.error, OSError, EOFError):
+            return False
     
     def _safe_keypad(self, win, enable: bool) -> bool:
         """
@@ -494,8 +500,24 @@ class UIManager:
         Returns:
             True if terminal is ready, False if we should fallback to console
         """
-        # Simply return True - we'll handle errors in the calling code
-        # This prevents terminal state corruption from overly complex checks
+        # Check if terminal is in cbreak mode
+        in_cbreak = self._is_terminal_in_cbreak()
+        
+        if not in_cbreak:
+            try:
+                curses.cbreak()
+            except (curses.error, OSError, IOError, AttributeError):
+                logger.warning("Failed to set cbreak mode, terminal may not be ready")
+                return False
+        
+        # Enable keypad mode on the main screen for arrow keys, Page Up/Down, Escape
+        if self._screen:
+            try:
+                self._screen.keypad(True)
+            except (curses.error, OSError, IOError, AttributeError):
+                logger.warning("Failed to enable keypad mode on main screen")
+                return False
+        
         return True
     
     def render_menu(self, options: List[Dict[str, Any]], 

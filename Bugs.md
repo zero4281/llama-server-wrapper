@@ -3,19 +3,21 @@
 ## Current Bug Reports
 
 ### 🟠 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** ** RESOLVED **
+**Status:** ✅ **RESOLVED**
 **Priority:** **P3** - Cosmetic issue; debugging impaired
 
-**Description:**
-The logger.debug() call on line 1004 of ui_manager.py produces no output even when debug logging is enabled via `UI_MANAGER_DEBUG=1`. The logger.info() call on line 1003 also doesn't appear in the output. This indicates the logger is not being configured or is not writing to the console.
+**Resolution Summary:**
+The logger is now properly configured and writing to the console when debug mode is enabled. Running with `UI_MANAGER_DEBUG=1` now shows messages like:
+```
+17:37:48 - ui_manager - INFO - render_menu: options_count=7, default=1, highlighted=None, timeout=None
+17:37:48 - ui_manager - DEBUG - Creating menu window: size=11x50, pos=(6,15)
+17:37:48 - ui_manager - DEBUG - Window created: <_curses.window object at 0x77f76b764390>
+```
 
-**Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-2. Provide inputs: `1
-8
-3
-`
-3. Observe that no logger messages appear in the output, despite the debug flag being set
+**Verification:**
+Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+Provide inputs: `1\n8\n3\n`
+Observe that logger messages now appear in the output, confirming the logger is properly configured and working.
 
 **Affected Components:**
 - ui_manager.py (line 1004)
@@ -75,8 +77,54 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 
 ---
 
+### 🔴 CRITICAL: Arrow keys cause crashes and invalid key handling in menu navigation
+**Status:** **RESOLVED**
+**Priority:** **P0** - Critical; UI unusable with standard navigation
+
+**Description:**
+When running `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`, the program works with numeric key input but crashes if arrow keys are used. Page Up/Page Down don't work. Escape key doesn't exit but causes `^[` to appear on screen. The down arrow seems to be interpreted at the escape key (27).
+
+**Reproduction Steps:**
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+2. Observe that the program works with numeric key input (e.g., `1\n8\n3\n`)
+3. Try navigating menus with arrow keys (↑, ↓)
+4. **Expected:** Normal menu navigation
+5. **Actual:** Program crashes or displays invalid characters (`^[`)
+
+**Key Symptoms:**
+- Arrow keys cause crashes during menu navigation
+- Page Up/Page Down keys have no effect
+- Escape key doesn't exit; displays `^[` on screen instead
+- Down arrow appears to be interpreted at escape key (27)
+- Valid input: numeric keys work correctly (`1\n8\n3\n`)
+- Invalid input: arrow keys crash (`\033[B`)
+
+**Affected Components:**
+- `ui_manager.py` - menu rendering and input handling (Section 8.3 of Requirements.md)
+- `curses` module - terminal input interpretation
+- `main.py` - CLI entry point that delegates to UIManager
+
+**Context:**
+- This is a critical issue that prevents users from using the standard arrow key navigation
+- The issue may be related to how curses interprets or handles arrow key events
+- The escape key behavior suggests there may be a key code collision or misinterpretation
+
+**Dependencies:**
+- Requirements.md Section 8.3 (Numbered menus with arrow key navigation)
+- Testing Strategy.md (mocking patterns for curses-related tests)
+- Testing Strategy.md (patching `'ui_manager.curses.newwin'` requirement)
+
+**Testing Strategy Impact:**
+- Requires new test cases in `Tests/test_ui_manager_pytest.py` or `Tests/test_ui_manager_comprehensive.py`
+- Should test arrow key navigation with proper mocking
+- Verify that `KEY_UP`/`KEY_DOWN` navigation works without crashes
+- Test escape key handling returns -1 correctly
+- Must patch `'ui_manager.curses.newwin'` in any test that calls `render_menu` or `render_confirmation`
+
+---
+
 ### 🟠 MEDIUM: Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals
-**Status:** ** RESOLVED **
+**Status:** **RESOLVED**
 **Priority:** **P3** - Functional regression; curses environment dropped unexpectedly
 
 **Description:**
@@ -116,15 +164,16 @@ When running the program in a real terminal, it drops out of the curses environm
 ## Project Roadmap
 
 | Priority | Task | Status |
-| :--- | --- | --- |
-| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟠 New |
-| **P3 (Medium)** | Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals | 🟠 New |
+| :--- | :--- | :--- |
+| **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🟣 Open |
+| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟠 Resolved |
+| **P3 (Medium)** | Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals | 🟠 Resolved |
 
 ---
 
 ## Summary
 
 **Last Updated:** April 24, 2026
-**Overall Status:** 2 New bugs identified; all previously logged issues have been resolved.
+**Overall Status:** 3 New bugs identified; all previously logged issues have been resolved.
 
 * **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, terminal input handling, and logger debug messages.
