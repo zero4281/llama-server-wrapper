@@ -354,27 +354,6 @@ class UIManager:
         except (curses.error, OSError, AttributeError):
             logger.warning("Window refresh failed, likely invalid")
             return False
-    
-    def print_header(self, text: str):
-        """Print header with color."""
-        if not self._using_curses:
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
-            return
-            
-        if not self._screen:
-            return
-            
-        try:
-            self._screen.attron(self._color_pair)
-            self._screen.addstr(0, 0, text.ljust(self.WIDTH))
-            self._screen.attroff(self._color_pair)
-            self._screen.refresh()
-        except curses.error as e:
-            logger.error(f"Header rendering error: {e}")
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Unexpected error during header rendering: {e}")
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
 
     def print_message(self, text: str, y: int = 1, x: int = 1):
         """Print message at specific position with color."""
@@ -396,28 +375,6 @@ class UIManager:
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during message rendering: {e}")
             print(text)
-
-    def print_line(self, y: int, x: int = 0, length: int = None):
-        """Print separator line."""
-        if not self._using_curses:
-            print("-" * (length or 60))
-            return
-            
-        if not self._screen:
-            return
-            
-        try:
-            line = "=" * (length if length else 60)
-            self._screen.attron(self._color_pair)
-            self._screen.addstr(y, x, line)
-            self._screen.attroff(self._color_pair)
-            self._screen.refresh()
-        except curses.error as e:
-            logger.error(f"Line rendering error at ({y},{x}): {e}")
-            print("-" * (length or 60))
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Unexpected error during line rendering: {e}")
-            print("-" * (length or 60))
 
     def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> Optional[curses.window]:
         """
