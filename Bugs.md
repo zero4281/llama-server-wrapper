@@ -90,40 +90,17 @@ The UIManager's `render_menu()` method is detecting that curses is not properly 
 ---
 
 ### 🟠 MEDIUM: TODO Comment in llama_updater.py - Curses UI Reverting to Terminal
-**Status:** 🆕 **NEW**
+**Status:** ✅ **RESOLVED**
 **Priority:** **P2** - Affects UI consistency
 
-**Description:**
-There is a TODO comment in `llama_updater.py` at line 684 that indicates the code is reverting to terminal output instead of using the curses UIManager for displaying selected release information.
+**Resolution:**
+Replaced the `print()` statement with `ui.print_message()` to display selected release information through the UIManager interface, ensuring consistent curses UI throughout the installation workflow.
 
-**Code Reference:**
-```python
-#TODO: DEBUG HERE - Add support for curses ui.render_menu or something similar so it doesn't revert to the terminal below.
-# Show selected release info
-print(f"\nSelected: {release_tag} ({asset_name})")
-```
+**Changes Made:**
+- Modified `llama_updater.py` to use `ui.print_message(f"\nSelected: {release_tag} ({asset_name})")` instead of `print()`
 
-**Root Cause:**
-After successfully using `ui.render_menu()` for platform and zip file selection, the code falls back to using `print()` to display the selected release information instead of using UIManager methods. This breaks the consistent curses UI experience required by Requirements.md Section 8.
-
-**Requirements for Fix:**
-1. Replace the `print()` statement with appropriate UIManager method calls
-2. Consider using `ui.print_message()` or similar to display the selection information
-3. Ensure all output after UIManager initialization goes through the UIManager interface
-
-**Affected Components:**
-- `llama_updater.py` - `install_release()` function (line 686)
-
-**Reproduction Steps:**
-1. Run `./llama-server-wrapper --install-llama`
-2. Navigate through the platform selection menu (uses curses UI)
-3. Navigate through the zip file selection menu (uses curses UI)
-4. Observe that the "Selected: ..." output appears as plain terminal text instead of in the curses UI
-
-**Dependencies:**
-- Requirements.md Section 8.3 (Numbered menus)
-- Requirements.md Section 8.6 (Lifecycle - UIManager must remain active for entire workflow)
-- ui_manager.py API (specifically print_message or similar methods)
+**Verification:**
+The selected release information now displays through the UIManager interface, maintaining consistent curses UI as required by Requirements.md Section 8.
 
 ---
 

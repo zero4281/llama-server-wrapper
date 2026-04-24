@@ -622,7 +622,7 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
     
     ui = ui_manager if ui_manager is not None else UIManager("llama.cpp")
     
-    print(f"Installing llama.cpp release {release_tag}...")
+    ui.print_message(f"Installing llama.cpp release {release_tag}...")
 
     # Delete existing installation first
     delete_existing_installation()
@@ -681,9 +681,12 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
     selected_asset = selected_platform_info['assets'][selected_zip_idx]
     asset_name = selected_asset['name']
     
-    #TODO: DEBUG HERE - Add support for curses ui.render_menu or something similar so it doesn't revert to the terminal below.
-    # Show selected release info
-    print(f"\nSelected: {release_tag} ({asset_name})")
+    # Show selected release info through UIManager
+    ui.print_message(f"\nSelected: {release_tag} ({asset_name})")
+    
+    # Check UI mode before render_confirmation
+    if not ui._using_curses or not ui._screen:
+        ui_logger.warning("UI manager not using curses, falling back to console for confirmation")
     
     # Confirmation prompt
     confirmed = ui.render_confirmation(
@@ -697,17 +700,17 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
     ui_logger.info(f"User confirmed installation of {release_tag} - {asset_name}")
 
     # Download
-    print(f"\nDownloading {selected_asset['name']}...")
+    ui.print_message(f"\nDownloading {selected_asset['name']}...")
     archive_path = Path(tempfile.gettempdir()) / f"llama-{release_tag.replace('v', '')}-{selected_asset['name']}"
     
     try:
         download_file(selected_asset['browser_download_url'], archive_path)
-        print(f"Downloaded to {archive_path}")
+        ui.print_message(f"Downloaded to {archive_path}")
 
         # Check for checksum file
         checksum_assets = get_checksum_assets(release)
         if checksum_assets:
-            print("Checking checksum...")
+            ui.print_message("Checking checksum...")
             checksum_asset = checksum_assets[0]
             checksum_path = download_checksum(archive_path, checksum_asset)
             
@@ -723,18 +726,18 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
             print("No checksum file available for this release, skipping verification")
 
         # Extract
-        print(f"\nExtracting to {LLAMA_CPP_DIR}...")
+        ui.print_message(f"\nExtracting to {LLAMA_CPP_DIR}...")
         extract_archive(archive_path, LLAMA_CPP_DIR)
 
         # Ensure llama-server is executable
         llama_server = LLAMA_CPP_DIR / "llama-server"
         if llama_server.exists():
             ensure_executable(llama_server)
-            print(f"Made {llama_server} executable")
+            ui.print_message(f"Made {llama_server} executable")
 
         # Clean up
         archive_path.unlink(missing_ok=True)
-        print("\nInstallation complete!")
+        ui.print_message("\nInstallation complete!")
         
         # Post-install sanity check
         verify_installation()
