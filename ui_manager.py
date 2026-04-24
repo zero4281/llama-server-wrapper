@@ -1039,28 +1039,25 @@ class UIManager:
         Returns:
             True if confirmed, False if cancelled/timeout
         """
-        start_time = time.time()
-        
-        # Validate screen and window upfront
-        if not self._screen:
-            return self._render_confirmation_fallback(message, default)
-        
-        height, width = self._screen.getmaxyx()
-        
-        # Clear screen and move cursor to top-left
-        self._screen.erase()
-        self._screen.move(0, 0)
-        
-        # Create window at bottom of screen
-        # Convert width to int to avoid float issues in Python 3.12+
-        width_int = int(width)
-        # Use int() on the result to ensure msg_width is always an integer
-        msg_width = int(min(width_int - 4, max(width_int * self.MIN_WIDTH_PERCENT, 60)))
-        y_start = max(2, height - 6)
-        x_start = max(2, (width_int - msg_width) // 2)
-        
-        # Create window
         try:
+            start_time = time.time()
+            
+            # Validate screen and window upfront
+            if not self._screen:
+                return self._render_confirmation_fallback(message, default)
+            
+            height, width = self._screen.getmaxyx()
+            
+            # Clear screen and move cursor to top-left
+            self._screen.erase()
+            self._screen.move(0, 0)
+            
+            # Create window at bottom of screen
+            width_int = int(width)
+            msg_width = int(min(width_int - 4, max(width_int * self.MIN_WIDTH_PERCENT, 60)))
+            y_start = max(2, height - 6)
+            x_start = max(2, (width_int - msg_width) // 2)
+            
             prompt_win = curses.newwin(4, msg_width, y_start, x_start)
             prompt_win.box()
             
@@ -1095,44 +1092,6 @@ class UIManager:
             
             prompt_win.refresh()
             self._screen.refresh()
-            
-            
-            # Input handling
-            logger.debug("Starting confirmation input loop")
-            
-            # Define redraw function
-            def confirm_redraw():
-                try:
-                    # Validate window before operations
-                    if not self._validate_window(prompt_win):
-                        logger.warning("Prompt window validation failed")
-                        try:
-                            self._cleanup_terminal()
-                        except:
-                            pass
-                        return
-                    
-                    prompt_win.erase()
-                    white_attr = self._get_white_attr()
-                    if white_attr is not None:
-                        prompt_win.attron(white_attr)
-                        prompt_win.addstr(0, 1, "Confirm".center(msg_width - 2))
-                        prompt_win.attroff(white_attr)
-                    prompt_win.addstr(1, 0, "-" * (msg_width - 2))
-                    white_attr = self._get_white_attr()
-                    if white_attr is not None:
-                        prompt_win.attron(white_attr)
-                        truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
-                        prompt_win.addstr(2, 0, truncated_msg)
-                        prompt_win.attroff(white_attr)
-                    prompt_win.attron(curses.A_REVERSE | curses.A_BOLD)
-                    prompt_win.addstr(3, 1, "Proceed? [Y/n]: ")
-                    prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
-                    prompt_win.refresh()
-                except Exception:
-                    pass
-            
-            confirm_redraw()
             
             # Input loop with timeout
             while True:
@@ -1186,8 +1145,10 @@ class UIManager:
                 self._screen.erase()
                 self._screen.refresh()
                 return True
-            return False
         except (curses.error, OSError, EOFError, TypeError) as e:
+            logger.error(f"Unexpected error during confirmation: {e}")
+            return self._render_confirmation_fallback(message, default)
+        except Exception as e:
             logger.error(f"Unexpected error during confirmation: {e}")
             return self._render_confirmation_fallback(message, default)
 
