@@ -3,7 +3,7 @@
 ## Current Bug Reports
 
 ### 🆕 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** ✅ **FIXED**
+**Status:** RESOLVED
 **Priority:** **P3** - Cosmetic issue; debugging impaired
 
 **Description:**
@@ -73,7 +73,6 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 | Priority | Task | Status |
 | :--- | --- | --- |
 | **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🔴 New |
-| **P3 (Low)** | Logger debug message never prints (UI_MANAGER_DEBUG flag ignored) | 🆕 New |
 
 ---
 
@@ -82,5 +81,4 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 **Last Updated:** April 23, 2026
 **Overall Status:** 1 New bug identified; all previously logged issues have been resolved.
 
-* **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, and terminal input handling.
-* **New:** Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
+* **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, terminal input handling, and logger debug messages.
