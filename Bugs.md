@@ -2,121 +2,69 @@
 
 ## Current Bug Reports
 
-### 🔴 CRITICAL: Confirmation Prompt Fallback Mode Crashes with "curses not properly initialized"
-**Status:** ✅ **RESOLVED**
-**Priority:** **P0** - Blocks `--install-llama` workflow
-
-**Resolution:**
-Added `self._cleanup_terminal()` calls in all fallback paths within `render_confirmation()` in `ui_manager.py`. This ensures proper terminal state restoration and curses cleanup when fallback mode is activated, eliminating the "curses not properly initialized" crash.
-
-**Changes Made:**
-- Modified `ui_manager.py` to call `self._cleanup_terminal()` before performing console fallback operations in all fallback paths
-- Fixed syntax errors introduced during editing (orphaned `except:` block)
-
-**Verification:**
-- All timeout tests (8 tests) pass
-- All API tests (4 tests) pass
-- The fix addresses the requirements: proper terminal state restoration and curses cleanup in fallback paths
-
----
-
-### 🔴 CRITICAL: Confirmation Prompt UI Failure (Logger/Curses Error)
-**Status:** 🔄 **RESOLVED**
-**Priority:** **P0** - Blocks `llama.cpp` installation workflow
-
-**Description:**
-The confirmation prompt (`Proceed? [Y/n]:`) fails to render correctly. The system crashes with an "Error: name 'logger' is not defined" and "curses not properly initialized, forcing cleanup."
-
-**Root Cause:**
-* The confirmation flow is bypassing `UIManager.render_confirmation()`, causing it to render as plain text without ncurses initialization.
-* The code attempts to access a non-existent `logger` variable during the prompt handling.
-* `render_confirmation()` appears to print text but fails to instantiate a curses window (no `curses.newwin()` call).
-
-**Requirements for Fix:**
-1.  Ensure all confirmation prompts for `--install-llama` are strictly routed through `UIManager.render_confirmation()`.
-2.  Remove direct `input()` or `print()` calls in the confirmation path.
-3.  Implement proper logging (using the wrapper's logging system, not a local `logger` variable).
-4.  Follow **Requirements.md Section 8.4** for implementation.
-
----
-
-### 🟢 RESOLVED: Keyboard Input Hang in Fallback Mode
-**Status:** ✅ **RESOLVED**
-**Priority:** **P0**
-
-**Resolution:**
-The terminal state issues and `select.select()` timeout failures have been addressed. The fallback console mode now correctly resets the terminal state and accurately detects keyboard input after `curses` initialization failures.
-
----
-
-### 🟠 HIGH: Failing UIManager Tests - Menu Navigation, Confirmation, Styling, Edge Cases
+### 🆕 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
 **Status:** 🆕 **NEW**
-**Priority:** **P1** - Blocks test suite reliability
+**Priority:** **P3** - Cosmetic issue; debugging impaired
 
 **Description:**
-Several tests in `Tests/test_ui_manager_comprehensive.py` are failing due to UIManager returning unexpected values:
-1. `test_menu_navigation` fails because `render_menu()` returns -1 instead of a valid index
-2. `test_confirmation` likely fails due to similar initialization issues
-3. `test_styling` fails due to color pair setup issues
-4. `test_edge_cases` fails due to various edge case handling
-
-**Root Cause:**
-The UIManager's `render_menu()` method is detecting that curses is not properly initialized and falling back to console mode, but the test setup is not correctly mocking the terminal environment for the fallback path. Specifically:
-- Line 515-517: The method checks `(not sys.stdin.isatty() and not self._using_curses) or not self._screen` and returns early
-- The test setup creates a UIManager but doesn't properly mock `sys.stdin.isatty()` to return True
-- Even when curses is mocked, the `_ensure_terminal_ready()` method may be returning False, forcing fallback to console mode
-
-**Affected Components:**
-- `ui_manager.py` - `render_menu()` method (lines 514-525)
-- `ui_manager.py` - `_ensure_terminal_ready()` method (lines 478-487)
-- `Tests/test_ui_manager_comprehensive.py` - Multiple test functions
+The logger.debug() call on line 1004 of ui_manager.py produces no output even when debug logging is enabled via `UI_MANAGER_DEBUG=1`. The logger.info() call on line 1003 also doesn't appear in the output. This indicates the logger is not being configured or is not writing to the console.
 
 **Reproduction Steps:**
-1. Run `python3 -m pytest Tests/test_ui_manager_comprehensive.py::test_menu_navigation -v`
-2. Observe that the test fails with "Should return valid index, got -1"
-3. Similar failures occur in `test_confirmation`, `test_styling`, and `test_edge_cases`
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+2. Provide inputs: `1
+8
+3
+`
+3. Observe that no logger messages appear in the output, despite the debug flag being set
 
-**Requirements for Fix:**
-1. Ensure UIManager methods properly handle mocked terminal environments in tests
-2. Fix `_ensure_terminal_ready()` to return True when curses is properly mocked
-3. Ensure test setups properly mock `sys.stdin.isatty()` to return True for interactive mode
-4. Verify that curses state checks don't incorrectly trigger fallback mode during testing
+**Affected Components:**
+- ui_manager.py (line 1004)
+- Logger configuration in the application
+
+**Context:**
+- The logger is imported but appears to be not properly configured
+- When UI_MANAGER_DEBUG=1 is set, we expect debug messages to be visible
+- The logger.debug() call is clearly in the code but produces no output
 
 **Dependencies:**
-- Requirements.md Section 8 (CLI User Interface Module)
-- Testing Strategy.md (for proper mocking patterns)
-- conftest.py (shared test fixtures)
+- Requirements.md Section 9.4 (Code style - logging)
+- Testing Strategy.md (logging expectations)
 
 ---
 
-### 🟠 MEDIUM: TODO Comment in llama_updater.py - Curses UI Reverting to Terminal
-**Status:** ✅ **RESOLVED**
-**Priority:** **P2** - Affects UI consistency
+### 🔴 HIGH: ui_manager.py:render_confirmation() has multiple redundant fallback sections making it overly engineered
+**Status:** 🔴 **NEW**
+**Priority:** **P2** - Code quality issue; maintenance impaired
 
-**Resolution:**
-Replaced the `print()` statement with `ui.print_message()` to display selected release information through the UIManager interface, ensuring consistent curses UI throughout the installation workflow.
+**Description:**
+The `render_confirmation()` method in ui_manager.py has multiple fallback sections scattered throughout the implementation, making it overly engineered and difficult to maintain. Instead of a single, well-defined fallback mechanism, the method has at least 6 separate fallback paths:
 
-**Changes Made:**
-- Modified `llama_updater.py` to use `ui.print_message(f"\nSelected: {release_tag} ({asset_name})")` instead of `print()`
+1. Lines 1014-1076: Console fallback when not using curses
+2. Lines 1135-1188: Validation fallback when window/screen invalid
+3. Lines 1282-1343: Missing curses attributes fallback
+4. Lines 1357-1438: Recovery fallback within input loop
+5. Lines 1479-1509: Exception handling fallback
+6. Lines 1510-1540: Another exception handling fallback
 
-**Verification:**
-The selected release information now displays through the UIManager interface, maintaining consistent curses UI as required by Requirements.md Section 8.
+This redundancy violates the principle of having a single source of truth for error handling and makes the code harder to understand, test, and maintain.
 
----
+**Reproduction Steps:**
+The issue is structural and present whenever the method is used. The complexity can be observed by examining the method code (lines 983-1544) and noting the multiple try/except blocks with fallback logic.
 
-## Implementation Notes
+**Affected Components:**
+- ui_manager.py (render_confirmation method)
+- main.py (uses for self-update confirmation)
+- llama_updater.py (uses for installation confirmation)
 
-**1. Rewrite Sequence (from `Testing Strategy.md`):**
-* **Order:** `conftest.py` → `test_init_and_lifecycle.py` → `test_rendering_primitives.py` → `test_render_confirmation.py` → `test_render_menu.py` → `test_render_progress_bar.py` → `test_integration.py`.
-* **Goal:** Run `pytest Tests/ -v` and confirm full suite pass.
+**Why This Matters:**
+1. Violates Single Responsibility Principle and DRY principle
+2. Increases maintenance overhead
+3. Makes testing difficult (coverage gaps for _screen is None scenarios)
+4. Inconsistent error handling could lead to unpredictable behavior
+5. New developers find the code intimidating
 
-**2. Target Test Counts:**
-* `test_init_and_lifecycle.py`: 8 tests
-* `test_render_menu.py`: 30 tests
-* `test_render_confirmation.py`: 15 tests
-* `test_render_progress_bar.py`: 10 tests
-* `test_rendering_primitives.py`: 12 tests
-* **Total:** ~90 tests
+**Suggested Fix:**
+Consolidate all fallback logic into a single method (e.g., _render_confirmation_fallback()) called from a single error handler. This would centralize fallback implementation, make the normal flow clearer, and simplify testing.
 
 ---
 
@@ -124,19 +72,15 @@ The selected release information now displays through the UIManager interface, m
 
 | Priority | Task | Status |
 | :--- | --- | --- |
-| **P0 (Critical)** | Fix Confirmation Prompt Fallback Mode Crash | ✅ Resolved |
-| **P0 (Critical)** | Fix Confirmation Prompt UI Failure (Logger/Curses Error) | ✅ Resolved |
-| **P0 (Critical)** | Fix Keyboard Input Hang (Fallback Mode) | ✅ Resolved |
-| **P1 (High)** | Failing UIManager Tests - Menu Navigation, Confirmation, Styling, Edge Cases | 🆕 New |
-| **P2 (Medium)** | TODO Comment in llama_updater.py - Curses UI Reverting to Terminal | 🆕 New |
+| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🔴 New |
+| **P3 (Low)** | Logger debug message never prints (UI_MANAGER_DEBUG flag ignored) | 🆕 New |
 
 ---
 
 ## Summary
 
 **Last Updated:** April 23, 2026
-**Overall Status:** 2 New bugs identified; all previously logged issues have been resolved.
+**Overall Status:** 1 New bug identified; all previously logged issues have been resolved.
 
 * **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, and terminal input handling.
-* **New:** Failing UIManager tests and UI consistency issue identified and documented.
-
+* **New:** Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
