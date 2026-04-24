@@ -3,7 +3,7 @@
 ## Current Bug Reports
 
 ### 🟠 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** RESOLVED
+**Status:** ** RESOLVED **
 **Priority:** **P3** - Cosmetic issue; debugging impaired
 
 **Description:**
@@ -69,7 +69,7 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 ---
 
 ### 🟠 MEDIUM: Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals
-**Status:** 🆕 **NEW**  
+**Status:** ** RESOLVED **
 **Priority:** **P3** - Functional regression; curses environment dropped unexpectedly
 
 **Description:**

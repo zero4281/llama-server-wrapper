@@ -204,15 +204,23 @@ class UIManager:
     def _restore_terminal_state(self):
         """Restore terminal to original state."""
         try:
-            # Check if curses is properly initialized
-            if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
-                logger.error("curses module missing required attributes, falling back to console")
-                # Force console mode
-                self._using_curses = False
-                self._screen = None
-                self._color_pair = None
-                self._initialized = False
-                return
+            # Validate window if available before attempting operations
+            if self._screen:
+                if not self._validate_window(self._screen):
+                    logger.warning("Screen window invalid, falling back to console")
+                    self._using_curses = False
+                    self._screen = None
+                    self._color_pair = None
+                    self._initialized = False
+                    return
+            
+            # Reset terminal mode
+            try:
+                curses.echo()
+                curses.nocbreak()
+                curses.keypad(False)
+            except (AttributeError, OSError) as e:
+                logger.warning(f"Failed to reset terminal modes: {e}")
             
             # Reset terminal mode
             try:
@@ -255,8 +263,14 @@ class UIManager:
     def _cleanup_terminal(self):
         """Clean up curses and restore terminal."""
         if self._using_curses and self._screen:
-            # Check if curses is properly initialized before attempting cleanup
-            if hasattr(curses, 'keypad') and hasattr(curses, 'endwin'):
+            # Validate screen window before attempting cleanup
+            if not self._validate_window(self._screen):
+                logger.warning("Screen window invalid, forcing cleanup")
+                self._screen = None
+                self._color_pair = None
+                self._using_curses = False
+                self._initialized = False
+            else:
                 try:
                     self._restore_terminal_state()
                 except (AttributeError, OSError) as e:
@@ -266,13 +280,6 @@ class UIManager:
                     self._color_pair = None
                     self._using_curses = False
                     self._initialized = False
-            else:
-                # Curses is not properly initialized, force cleanup
-                logger.warning("curses not properly initialized, forcing cleanup")
-                self._screen = None
-                self._color_pair = None
-                self._using_curses = False
-                self._initialized = False
         else:
             # Even if not initialized, ensure clean state
             self._screen = None
@@ -712,11 +719,9 @@ class UIManager:
                 pass
             return -1
         
-        # Check for basic curses functionality (accounting for Python 3.12 changes)
-        # In Python 3.12+, some curses attributes have been restructured
-        curses_funcs = ['endwin', 'echo', 'noecho', 'cbreak', 'nodelay', 'getch']
-        if not any(hasattr(curses, func) for func in curses_funcs):
-            logger.warning("curses module missing required functions, returning -1")
+        # Validate screen window before proceeding
+        if not self._validate_window(self._screen):
+            logger.warning("Screen window invalid, returning -1")
             try:
                 self._cleanup_terminal()
             except:
@@ -1284,15 +1289,15 @@ class UIManager:
                     return True
                 return False
             
-            if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
-                logger.warning("curses module missing required attributes, using fallback")
+            # Validate prompt window before proceeding
+            if not self._validate_window(prompt_win):
+                logger.warning("Prompt window invalid, using fallback")
                 # Cleanup terminal state before fallback
                 self._cleanup_terminal()
                 
-                # Restore terminal state with robust reset
+                # Comprehensive terminal reset sequence
                 import subprocess
                 try:
-                    # Comprehensive terminal reset sequence
                     # 1. Reset to cooked mode with echo and newline
                     subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                     # 2. Flush all ANSI escape sequences to clear any pending codes
