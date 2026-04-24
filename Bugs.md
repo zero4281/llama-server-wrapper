@@ -2,7 +2,7 @@
 
 ## Current Bug Reports
 
-### 🆕 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
+### 🟠 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
 **Status:** RESOLVED
 **Priority:** **P3** - Cosmetic issue; debugging impaired
 
@@ -32,8 +32,8 @@ The logger.debug() call on line 1004 of ui_manager.py produces no output even wh
 
 ---
 
-### 🔴 HIGH: ui_manager.py:render_confirmation() has multiple redundant fallback sections making it overly engineered
-**Status:** 🔴 **NEW**
+### 🟠 HIGH: ui_manager.py:render_confirmation() has multiple redundant fallback sections making it overly engineered
+**Status:** 🆕 **NEW**
 **Priority:** **P2** - Code quality issue; maintenance impaired
 
 **Description:**
@@ -68,47 +68,41 @@ Consolidate all fallback logic into a single method (e.g., _render_confirmation_
 
 ---
 
-### 🟠 HIGH: render_confirmation() fallback prints directly to terminal, breaking curses environment
-**Status:** 🟠 **NEW**
-**Priority:** **P2** - Critical behavior violation; requirements non-compliance
+### 🟠 MEDIUM: Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals
+**Status:** 🆕 **NEW**  
+**Priority:** **P3** - Functional regression; curses environment dropped unexpectedly
 
 **Description:**
-The fallback implementation in `render_confirmation()` (lines 1282-1343 of ui_manager.py) uses `print()` statements instead of curses rendering when curses attributes are missing or when falling back to console output. This causes the terminal to drop out of the curses environment and display raw text directly, violating Requirements.md §8.4 which states: "Must never drop out of the curses environment; all rendering goes through UIManager."
-
-The specific issue is on line 1312:
-```python
-print("Proceed? [Y/n]: ", end="", flush=True)
-```
-
-This fallback path is triggered when the curses window cannot be created or when `_screen` is `None`, but it still prints to stdout/stderr instead of using the proper fallback methods (`print_header()`, `print_message()`) that are designed for console output.
+When running the program in a real terminal, it drops out of the curses environment and displays a print statement on line 1312 of ui_manager.py. This is not the desired behavior. The program should remain within the curses environment when curses is working, and should only fall back to console output when curses fails. The bug indicates that the fallback mechanism is being triggered unexpectedly in real terminals, causing the program to exit the curses session prematurely.
 
 **Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama 2>&1`
 2. Provide inputs: `1\n8\n3\n`
-3. Observe the terminal dropping out of curses and displaying the print message on line 1312
+3. Observe that the program drops out of curses and displays console output instead of rendering through UIManager
 
 **Affected Components:**
-- ui_manager.py (render_confirmation method, fallback section lines 1282-1343)
-- Requirements.md §8.4 (curses environment requirement)
+- ui_manager.py (line 1312 - fallback console output section)
+- render_confirmation method (fallback handling)
+- Terminal state management
 
-**Why This Matters:**
-1. Directly violates Requirements.md §8.4 - the entire interactive workflow must remain within curses
-2. Inconsistent with other fallback implementations that use `print_header()` and `print_message()`
-3. Creates a poor user experience with raw text instead of styled console output
-4. May cause issues in environments where stdout/stderr handling is different
-5. Contradicts the design principle that all UI output goes through UIManager
-
-**Suggested Fix:**
-Replace the `print()` statement on line 1312 with a call to `print_message()`:
-```python
-print_message("Proceed? [Y/n]: ", end="")
-```
-
-This would maintain consistency with other fallback paths and ensure the console output is styled appropriately.
+**Context:**
+- The program should maintain the curses environment throughout the entire interactive workflow
+- Fallback to console output should only occur when curses initialization fails or curses attributes are missing
+- The bug causes the curses session to be torn down unexpectedly, leaving the terminal in an inconsistent state
+- This violates the requirement that "The curses session must not be torn down and re-entered mid-workflow; UIManager is constructed once and destroyed once"
+- The bug is particularly problematic because it can occur in real terminals where curses should be working
 
 **Dependencies:**
-- Requirements.md §8.4 (curses environment requirement)
-- Testing Strategy.md (fallback behavior expectations)
+- Requirements.md Section 8.4 (Confirmation prompts must never drop out of the curses environment)
+- Requirements.md Section 8.6 (UIManager lifecycle - curses session must remain open for the entire duration)
+- Testing Strategy.md (mocking patterns for curses-related tests)
+
+**Suggested Fix:**
+1. Review the condition that triggers the fallback console output path (around line 1312)
+2. Ensure fallback is only executed when curses is genuinely unavailable or has failed
+3. Add proper terminal state restoration before exiting the fallback section
+4. Consider consolidating fallback logic (as suggested in the existing bug #2) to make the fallback path more robust and predictable
+5. Add unit tests to verify fallback is not triggered unexpectedly in real terminal scenarios
 
 ---
 
@@ -116,8 +110,8 @@ This would maintain consistency with other fallback paths and ensure the console
 
 | Priority | Task | Status |
 | :--- | --- | --- |
-| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🔴 New |
-| **P2 (High)** | render_confirmation() fallback prints directly to terminal, breaking curses environment | 🟠 New |
+| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟠 New |
+| **P3 (Medium)** | Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals | 🟠 New |
 
 ---
 
