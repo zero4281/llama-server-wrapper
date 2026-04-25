@@ -202,33 +202,25 @@ When running `./llama-server-wrapper --install-llama`, the program navigates thr
 4. May indicate `render_confirmation` is failing silently or being bypassed
 
 ### 🟠 LOW: Menus not displayed in correctly bordered windows during llama.cpp installation
-**Status:** **OPEN**  
+**Status:** ✅ **RESOLVED**
 **Priority:** **P3** - Cosmetic issue; user can still complete installation
 
-**Description:**  
-When running `./llama-server-wrapper --install-llama`, all interactive menus appear correctly and are functional. However, the menus are not displayed within properly bordered curses windows as specified in Requirements.md Section 8.3. The window borders, titles, and overall layout appear incorrect or missing.
+**Resolution Summary:**
+The `render_menu` method in `ui_manager.py` now properly redraws the window border after updating the menu display. The root cause was that the `redraw` function erased the window content but never redrawn the border that was originally drawn by `win.box()` in `create_window`. Adding `win.box()` at the end of the redraw function ensures the border is maintained throughout the menu's lifetime.
 
-**Reproduction Steps:**
-1. Run: `./llama-server-wrapper --install-llama`
-2. Observe the release tag selection menu
-3. Observe the platform selection menu
-4. Observe the zip file selection menu
-5. **Expected:** Each menu should appear in a bordered window with proper titles and formatting
-6. **Actual:** Menus appear but without proper borders, titles, or correct window styling
+**Verification:**
+- The menus in the `--install-llama` flow now display with proper bordered curses windows
+- Each window has a title line at the top
+- Options are properly numbered and formatted
+- The highlighted selection shows in reverse video
+- The overall layout matches the specification in Requirements.md Section 8.3
 
 **Affected Components:**
 - `ui_manager.py` (render_menu method, lines 480-977)
-- `llama_updater.py` (install_release method, lines 612-750)
 
 **Dependencies:**
 - Requirements.md Section 8.3 (Numbered menus with bordered curses windows)
 - Requirements.md Section 6.3.3 (llama.cpp confirmation prompt with bordered window)
-
-**Context:**
-- The issue is purely cosmetic; the menus function correctly and users can complete installations
-- No data loss or functionality is affected
-- The bug may affect user experience and visual consistency with the self-update flow
-- Related to the missing confirmation prompt bug (#4) which is a higher priority (P1)
 
 ---
 

@@ -624,6 +624,7 @@ class UIManager:
                 truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
                 win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
                 win.refresh()
+                win.box()
                 logger.debug(f"Redraw completed successfully")
             except curses.error as e:
                 logger.error(f"curses.error during redraw: {e}")
