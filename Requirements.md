@@ -222,12 +222,12 @@ Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits w
 5. If `--stop-server`: signal `runner.py` to stop `llama-server`; exit on completion.
 6. Otherwise: check whether the `./llama-cpp` directory exists.
    - If it **does not exist**, display the following error via `UIManager` (bordered curses window) and exit with a non-zero status code:
-     ```
-     ┌────────────────────────────────────────────────┐
-     │ llama-cpp not found. Please install it first:  │
-     │   llama-server-wrapper --install-llama         │
-     └────────────────────────────────────────────────┘
-     ```
+```
+┌────────────────────────────────────────────────┐
+│ llama-cpp not found. Please install it first:  │
+│   llama-server-wrapper --install-llama         │
+└────────────────────────────────────────────────┘
+```
    - If it **exists**, load `config.json`, merge pass-through args, and invoke `Runner`.
 
 ---
