@@ -149,6 +149,7 @@ Added `win.box()` at the beginning of `redraw` to maintain border throughout men
 | :--- | :--- | :--- |
 | **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🔴 Open |
 | **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🔴 Open |
+| **P2 (Medium)** | Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification | 🔴 Open |
 | **P3 (Low)** | Title and footer bars in menu windows disappear or draw incorrectly | 🟢 Resolved |
 | **P3 (Low)** | Menus not displayed in correctly bordered windows | 🟢 Resolved |
 | **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟢 Resolved |
@@ -160,7 +161,69 @@ Added `win.box()` at the beginning of `redraw` to maintain border throughout men
 ## Summary
 
 **Last Updated:** April 25, 2026  
-**Overall Status:** 2 open bugs; all other issues resolved.
+**Overall Status:** 3 open bugs; all other issues resolved.
 
-* **Open:** Arrow key crashes (P0) and missing confirmation prompt (P1)
+* **Open:** Arrow key crashes (P0), missing confirmation prompt (P1), confirmation prompt border styling (P2)
 * **Resolved:** Title/footer bar disappearance, logger debug messages, redundant fallback sections, curses environment drops, and menu border issues.
+
+### 🟠 MEDIUM: Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification
+**Status:** OPEN  
+**Priority:** **P2** - Feature incomplete; UI does not conform to documented requirements
+
+**Description:**  
+When running `./llama-server-wrapper --install-llama`, after selecting a release tag, platform, and zip file, the confirmation prompt does not match the border styling and layout specified in `Requirements.md` Section 5.3.2. The current implementation only displays a simple message without the required footer bar, button layout, or visual styling.
+
+**Reproduction Steps:**
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
+2. Navigate through the release tag selection menu and select an option (e.g., `1`)
+3. Navigate through the platform selection menu and select an option
+4. Navigate through the zip file selection menu and select an option
+5. **Expected:** A bordered curses window should appear with:
+   - Title line: "Selected release: vX.Y.Z (filename.zip)"
+   - Prompt line: "Proceed with update?"
+   - Button row: `▶ [ Yes ]  [ No ]` with a ▶ (▶) arrow pointing to the active button
+   - Proper border around the entire window
+6. **Actual:** The confirmation prompt appears but lacks the specified border styling, footer prompt, and button layout with the ▶ indicator
+
+**Affected Components:**
+- `llama_updater.py` (line 692-694) - confirmation prompt rendering call
+- `ui_manager.py` - `render_confirmation` method (does not support button layout)
+- `main.py` - entry point that delegates to `LlamaUpdater`
+
+**Dependencies:**
+- Requirements.md Section 5.3.2 (Confirmation prompt border styling specification)
+- Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
+
+**Expected Behavior (per Requirements.md 5.3.2):**
+```
+┌─────────────────────────────────────────────────────┐
+│  Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip) │
+│  Proceed with update?                               │
+│                                                     │
+│            ▶ [ Yes ]          [ No  ]               │
+└─────────────────────────────────────────────────────┘
+```
+
+**Current Behavior:**
+- Simple message displayed without border
+- No footer prompt "Proceed with update?"
+- No button layout with ▶ indicator
+- Does not follow the visual specification in Requirements.md
+
+**Impact:**
+- UI inconsistency with documented requirements
+- User confusion about how to proceed
+- Non-compliance with the software requirements specification
+- Missing visual feedback (▶ indicator) for the default/active option
+
+**Workaround:**
+- N/A (feature is incomplete)
+
+**Estimated Fix Effort:**
+- Medium - Requires either extending `render_confirmation` to support button layout, or implementing a custom confirmation dialog in `llama_updater.py` that renders the exact layout from Requirements.md
+
+**Related Documentation:**
+- `./Requirements.md` Section 5.3.2 - Exact layout specification
+- `./Plan.md` Section 6.3.3 - llama.cpp confirmation prompt requirement
+
+---

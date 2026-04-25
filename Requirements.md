@@ -185,19 +185,23 @@ Choice [1]:
 After the user selects a source, `UIManager` must render a bordered curses window displaying the resolved version or commit reference and prompt for confirmation before modifying any local files. This prompt must **not** drop out of the curses environment; it must be rendered entirely through `UIManager` consistent with Section 8.4. Example layout:
 
 ```
-+-----------------------------------------------------+
-| Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip) |
-| Proceed with update? [Y/n]:                         |
-+-----------------------------------------------------+
+┌─────────────────────────────────────────────────────┐
+│  Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip) │
+│  Proceed with update?                               │
+│                                                     │
+│            ▶ [ Yes ]          [ No  ]               │
+└─────────────────────────────────────────────────────┘
 ```
 
 For a HEAD update the label should reflect the branch rather than a release tag, e.g.:
 
 ```
-+------------------------------------+
-| Selected: main branch HEAD         |
-| Proceed with update? [Y/n]:        |
-+------------------------------------+
+┌─────────────────────────────────────────────┐
+│  Selected: main branch HEAD                 │
+│  Proceed with update?                       │
+│                                             │
+│         ▶ [ Yes ]          [ No  ]          │
+└─────────────────────────────────────────────┘
 ```
 
 Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits with status code `0` without modifying any files.
@@ -219,10 +223,10 @@ Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits w
 6. Otherwise: check whether the `./llama-cpp` directory exists.
    - If it **does not exist**, display the following error via `UIManager` (bordered curses window) and exit with a non-zero status code:
      ```
-     +------------------------------------------------+
-     | llama-cpp not found. Please install it first:  |
-     |   llama-server-wrapper --install-llama         |
-     +------------------------------------------------+
+     ┌────────────────────────────────────────────────┐
+     │ llama-cpp not found. Please install it first:  │
+     │   llama-server-wrapper --install-llama         │
+     └────────────────────────────────────────────────┘
      ```
    - If it **exists**, load `config.json`, merge pass-through args, and invoke `Runner`.
 
@@ -311,10 +315,12 @@ If auto-detection fails (platform or architecture cannot be determined), no opti
 After the user selects a release tag and asset, `UIManager` must render a bordered curses window displaying both selections and prompt for confirmation before downloading anything. This prompt must **not** drop out of the curses environment; it must be rendered entirely through `UIManager` consistent with Section 8.4. Example layout:
 
 ```
-+----------------------------------------------------------+
-| Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) |
-| Proceed with installation? [Y/n]:                        |
-+----------------------------------------------------------+
+┌──────────────────────────────────────────────────────────┐
+│ Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) │
+│ Proceed with installation?                               │
+│                                                          │
+│             ▶ [ Yes ]          [ No  ]                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 Pressing Enter confirms (default yes). Entering `n` or `Esc` cancels and exits with status code `0` without modifying any files.
