@@ -646,10 +646,16 @@ class UIManager:
 
         try:
             logger.debug(f"Creating menu window: size={menu_height}x{menu_width}, pos=({y_center},{x_center})")
-            menu_win = curses.newwin(menu_height, menu_width, y_center, x_center)
+            menu_win = self.create_window(menu_height, menu_width, y_center, x_center)
             logger.debug(f"Window created: {menu_win}")
             
-            menu_win.box()
+            if menu_win is None:
+                logger.error("Menu window creation failed")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                return -1
             
             # Safely enable keypad mode with error handling
             if self._safe_keypad(menu_win, True):
@@ -969,16 +975,17 @@ class UIManager:
                 pass
             return -1
 
-    def _render_confirmation_fallback(self, message: str, default: bool = True) -> bool:
+    def _render_console_fallback(self, message: str, prompt: str = "", prompt_suffix: str = "") -> Optional[str]:
         """
-        Consolidated fallback for confirmation prompts.
+        Unified console fallback renderer.
         
         Args:
-            message: The message to display
-            default: Default return value on timeout
+            message: The main message to display
+            prompt: Optional prompt text
+            prompt_suffix: Optional suffix after prompt
             
         Returns:
-            True if confirmed, False if cancelled
+            Depending on method context: bool for confirmation, str for input
         """
         try:
             self._cleanup_terminal()
@@ -986,8 +993,14 @@ class UIManager:
             subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             
-            print(f"\n{message}")
-            print("Proceed? [Y/n]: ", end="", flush=True)
+            print("\033[2J\033[1;1H\n", end="")
+            sys.stdout.flush()
+            
+            if prompt:
+                print(f"{message}")
+                print(prompt + prompt_suffix, end="", flush=True)
+            else:
+                print(f"{message}")
             
             if sys.stdin.isatty():
                 import select
@@ -999,11 +1012,21 @@ class UIManager:
             else:
                 response = ""
             
-            return response in ('', 'y', 'yes')
+            return response
         except Exception:
-            print(f"\n{message}")
-            response = input(f"Proceed? [Y/n]: ").strip().lower()
-            return response in ('', 'y', 'yes')
+            print(f"{message}")
+            if prompt:
+                response = input(prompt).strip().lower()
+            else:
+                response = input().strip().lower()
+            return response
+    
+    def _render_confirmation_fallback(self, message: str, default: bool = True) -> bool:
+        """
+        Fallback for confirmation prompts.
+        """
+        response = self._render_console_fallback(message, "Proceed? [Y/n]: ")
+        return response in ('', 'y', 'yes')
     
     def render_confirmation(self, message: str, default: bool = True, 
                            timeout: Optional[int] = None) -> bool:
@@ -1037,8 +1060,10 @@ class UIManager:
             y_start = max(2, height - 6)
             x_start = max(2, (width_int - msg_width) // 2)
             
-            prompt_win = curses.newwin(4, msg_width, y_start, x_start)
-            prompt_win.box()
+            prompt_win = self.create_window(4, msg_width, y_start, x_start)
+            if prompt_win is None:
+                logger.error("Confirmation window creation failed")
+                return self._render_confirmation_fallback(message, default)
             
             # Safely enable keypad mode
             if self._safe_keypad(prompt_win, True):
@@ -1154,40 +1179,10 @@ class UIManager:
             logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}")
         if not self._using_curses:
             # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"Downloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1202,8 +1197,10 @@ class UIManager:
         x_offset = 2
         
         try:
-            bar_win = curses.newwin(bar_height, bar_width, y_offset, x_offset)
-            bar_win.box()
+            bar_win = self.create_window(bar_height, bar_width, y_offset, x_offset)
+            if bar_win is None:
+                logger.error("Progress bar window creation failed")
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(bar_win, True):
@@ -1294,41 +1291,10 @@ class UIManager:
         """
         logger.debug(f"render_success called: {message[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"\n{'='*60}\n{message.center(60)}\n{'='*60}",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1343,8 +1309,11 @@ class UIManager:
         x_offset = 2
         
         try:
-            msg_win = curses.newwin(msg_height, width - 4, y_offset, x_offset)
-            msg_win.box()
+            msg_win = self.create_window(msg_height, width - 4, y_offset, x_offset)
+            if msg_win is None:
+                logger.error("Success window creation failed")
+                print(message)
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(msg_win, True):
@@ -1412,41 +1381,10 @@ class UIManager:
         """
         logger.debug(f"render_error called: {message[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1461,8 +1399,11 @@ class UIManager:
         x_offset = 2
         
         try:
-            msg_win = curses.newwin(msg_height, width - 4, y_offset, x_offset)
-            msg_win.box()
+            msg_win = self.create_window(msg_height, width - 4, y_offset, x_offset)
+            if msg_win is None:
+                logger.error("Error window creation failed")
+                print(f"Error: {message}")
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(msg_win, True):
@@ -1677,39 +1618,7 @@ class UIManager:
         """
         logger.debug(f"get_input called with prompt={prompt[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        return sys.stdin.readline().strip()
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            return sys.stdin.readline().strip()
-                        else:
-                            return ""
-                else:
-                    return sys.stdin.readline().strip()
-            except:
-                return ""
+            return self._render_console_fallback("")
 
         height, width = self._screen.getmaxyx()
         y, x = self._screen.getyx()
@@ -1754,47 +1663,11 @@ class UIManager:
         """
         logger.debug(f"get_numbered_input called with options={len(options)}, default={default}")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            print(f"Choice [{default if default is not None else 0}]: ", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        choice = sys.stdin.readline().strip()
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            choice = sys.stdin.readline().strip()
-                        else:
-                            choice = ""
-                else:
-                    choice = sys.stdin.readline().strip()
-                
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except (ValueError, EOFError):
-                return None
+            prompt = f"Choice [{default if default is not None else 0}]: "
+            return self._render_console_fallback(
+                f"\n{'\n'.join([f'  {i}. {opt}' for i, opt in enumerate(options)])}",
+                prompt
+            )
 
         height, width = self._screen.getmaxyx()
         y, x = self._screen.getyx()
