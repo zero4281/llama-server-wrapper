@@ -161,11 +161,84 @@ When running the program in a real terminal, it drops out of the curses environm
 
 ---
 
+### 🔴 HIGH: Missing confirmation prompt after llama.cpp installation selection
+**Status:** **OPEN**  
+**Priority:** **P1** - Major feature broken; user cannot confirm installation, though workaround exists
+
+**Description:**  
+When running `./llama-server-wrapper --install-llama`, the program navigates through release tag selection, platform detection, and zip file selection menus correctly. However, after completing these selections, the required confirmation prompt (as specified in Requirements.md Section 6.3.3) never appears. The installation proceeds to download without user confirmation.
+
+**Reproduction Steps:**
+1. Run: `./llama-server-wrapper --install-llama`
+2. Navigate through release tag selection menu
+3. Select a release tag
+4. Navigate through platform selection menu  
+5. Select a platform
+6. Navigate through zip file selection menu
+7. Select a zip file
+8. **Expected:** A bordered curses window should appear with:
+   ```
+   +----------------------------------------------------------+
+   | Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) |
+   | Proceed with installation? [Y/n]:                        |
+   +----------------------------------------------------------+
+   ```
+9. **Actual:** No confirmation prompt appears; installation proceeds automatically
+
+**Affected Components:**
+- `llama_updater.py` (Section 6.3.3) - confirmation prompt rendering logic
+- `ui_manager.py` (Section 8.4) - `render_confirmation` method
+- `main.py` (line 252) - entry point that delegates to `LlamaUpdater`
+
+**Dependencies:**
+- Requirements.md Section 6.3.3 (llama.cpp confirmation prompt)
+- Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
+- Testing Strategy.md (mocking patterns for `render_confirmation` tests)
+
+**Why This Matters:**
+1. Violates explicit requirement in Requirements.md for confirmation prompt
+2. Undermines user control - installations proceed without explicit consent
+3. Inconsistent with self-update flow which correctly shows confirmation prompts
+4. May indicate `render_confirmation` is failing silently or being bypassed
+
+### 🟠 LOW: Menus not displayed in correctly bordered windows during llama.cpp installation
+**Status:** **OPEN**  
+**Priority:** **P3** - Cosmetic issue; user can still complete installation
+
+**Description:**  
+When running `./llama-server-wrapper --install-llama`, all interactive menus appear correctly and are functional. However, the menus are not displayed within properly bordered curses windows as specified in Requirements.md Section 8.3. The window borders, titles, and overall layout appear incorrect or missing.
+
+**Reproduction Steps:**
+1. Run: `./llama-server-wrapper --install-llama`
+2. Observe the release tag selection menu
+3. Observe the platform selection menu
+4. Observe the zip file selection menu
+5. **Expected:** Each menu should appear in a bordered window with proper titles and formatting
+6. **Actual:** Menus appear but without proper borders, titles, or correct window styling
+
+**Affected Components:**
+- `ui_manager.py` (render_menu method, lines 480-977)
+- `llama_updater.py` (install_release method, lines 612-750)
+
+**Dependencies:**
+- Requirements.md Section 8.3 (Numbered menus with bordered curses windows)
+- Requirements.md Section 6.3.3 (llama.cpp confirmation prompt with bordered window)
+
+**Context:**
+- The issue is purely cosmetic; the menus function correctly and users can complete installations
+- No data loss or functionality is affected
+- The bug may affect user experience and visual consistency with the self-update flow
+- Related to the missing confirmation prompt bug (#4) which is a higher priority (P1)
+
+---
+
 ## Project Roadmap
 
 | Priority | Task | Status |
 | :--- | :--- | :--- |
 | **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🟣 Open |
+| **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🔴 Open |
+| **P3 (Low)** | Menus not displayed in correctly bordered windows during llama.cpp installation | 🟠 Open |
 | **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟠 Resolved |
 | **P3 (Medium)** | Program drops out of curses and displays print on line 1312 of ui_manager.py in real terminals | 🟠 Resolved |
 
@@ -174,6 +247,6 @@ When running the program in a real terminal, it drops out of the curses environm
 ## Summary
 
 **Last Updated:** April 24, 2026
-**Overall Status:** 3 New bugs identified; all previously logged issues have been resolved.
+**Overall Status:** 2 new bugs tracked; all previously logged issues have been resolved.
 
 * **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, terminal input handling, and logger debug messages.
