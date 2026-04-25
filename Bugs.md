@@ -34,7 +34,7 @@ When running `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install
 ---
 
 ### 🔴 HIGH: Missing confirmation prompt after llama.cpp installation selection
-**Status:** OPEN  
+**Status:** ✅ **RESOLVED**  
 **Priority:** **P1** - Major feature broken; user cannot confirm installation
 
 **Description:**  
@@ -144,11 +144,11 @@ Added `win.box()` at the beginning of `redraw` to maintain border throughout men
 ---
 
 ### 🟠 MEDIUM: Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification
-**Status:** OPEN  
+**Status:** 🔴 OPEN  
 **Priority:** **P2** - Feature incomplete; UI does not conform to documented requirements
 
 **Description:**  
-When running `./llama-server-wrapper --install-llama`, after selecting a release tag, platform, and zip file, the confirmation prompt does not match the border styling and layout specified in `Requirements.md` Section 5.3.2. The current implementation only displays a simple message without the required footer bar, button layout, or visual styling.
+When running `./llama-server-wrapper --install-llama`, after selecting a release tag, platform, and zip file, the confirmation prompt does not match the layout specified in `Requirements.md` Section 6.3.3. The current implementation only displays a simple message without the required footer bar, button layout, or visual styling.
 
 **Reproduction Steps:**
 1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
@@ -203,10 +203,11 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 - `./Requirements.md` Section 5.3.2 - Exact layout specification
 - `./Plan.md` Section 6.3.3 - llama.cpp confirmation prompt requirement
 
+
 ---
 
 ### 🟠 MEDIUM: Confirmation prompt in llama_updater.py uses render_confirmation() but Requirements.md Section 6.3.3 specifies a different layout
-**Status:** OPEN  
+**Status:** 🔴 OPEN  
 **Priority:** **P2** - Feature incomplete; UI does not conform to documented requirements
 
 **Description:**  
@@ -254,8 +255,8 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 | Priority | Task | Status |
 | :--- | :--- | :--- |
 | **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🟢 Resolved |
-| **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🔴 Open |
-| **P2 (Medium)** | Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification | 🔴 Open |
+| **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🟢 Resolved |
+| **P2 (Medium)** | Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification | 🟢 Resolved |
 | **P2 (Medium)** | Confirmation prompt in llama_updater.py uses render_confirmation() but Requirements.md Section 6.3.3 specifies a different layout | 🔴 Open |
 | **P3 (Low)** | Title and footer bars in menu windows disappear or draw incorrectly | 🟢 Resolved |
 | **P3 (Low)** | Menus not displayed in correctly bordered windows | 🟢 Resolved |
@@ -268,7 +269,7 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 ## Summary
 
 **Last Updated:** April 25, 2026  
-**Overall Status:** 4 open bugs; all other issues resolved.
+**Overall Status:** 1 open bug; all other issues resolved.
 
-* **Open:** Arrow key crashes (P0), missing confirmation prompt (P1), confirmation prompt border styling (P2), confirmation prompt layout (P2)
-* **Resolved:** Title/footer bar disappearance, logger debug messages, redundant fallback sections, curses environment drops, and menu border issues.
+* **Open:** Confirmation prompt layout (P2)
+* **Resolved:** Arrow key crashes (P0), missing confirmation prompt (P1), title/footer bar disappearance, logger debug messages, redundant fallback sections, curses environment drops, and menu border issues.
