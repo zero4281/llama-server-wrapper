@@ -816,6 +816,12 @@ class LlamaUpdater:
         ui = UIManager("llama.cpp")
         selected_tag_idx = ui.render_menu(tag_options, default=1)
         
+        # Pass ui to install_release for consistent UI management
+        if release is not None and release_tag:
+            install_release(release, release_tag, ui)
+        else:
+            print("Installation cancelled or failed to select a valid release.")
+        
         if selected_tag_idx == -1:
             print("Tag selection cancelled.")
             return

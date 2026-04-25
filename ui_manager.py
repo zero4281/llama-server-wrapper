@@ -602,7 +602,7 @@ class UIManager:
                     win.attron(white_attr)
                     win.addstr(0, 1, f"Select {self._title.lower()}".center(menu_width - 2))
                     win.attroff(white_attr)
-                    win.addstr(1, 0, "-" * (menu_width - 2))
+                    win.addstr(1, 1, "-" * (menu_width - 4))
                 for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
