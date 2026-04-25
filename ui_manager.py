@@ -596,7 +596,12 @@ class UIManager:
                         pass
                     raise Exception("Window invalid")
                 
+                # Clear the window content (inside the border)
                 win.erase()
+                
+                # Redraw the border with box() to ensure it's properly drawn
+                win.box()
+                
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
                     win.attron(white_attr)
@@ -624,7 +629,6 @@ class UIManager:
                 truncated_footer = footer[:menu_width - 2] if len(footer) > menu_width - 2 else footer
                 win.addstr(menu_height - 1, 0, truncated_footer, curses.A_REVERSE)
                 win.refresh()
-                win.box()
                 logger.debug(f"Redraw completed successfully")
             except curses.error as e:
                 logger.error(f"curses.error during redraw: {e}")
@@ -1079,7 +1083,7 @@ class UIManager:
                 prompt_win.attron(white_attr)
                 prompt_win.addstr(0, 1, title.center(msg_width - 2))
                 prompt_win.attroff(white_attr)
-            prompt_win.addstr(1, 0, "-" * (msg_width - 2))
+            prompt_win.addstr(1, 1, "-" * (msg_width - 4))
             
             # Message
             white_attr = self._get_white_attr()
