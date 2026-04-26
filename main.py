@@ -39,6 +39,11 @@ class Main:
         Returns:
             Parsed arguments namespace
         """
+        # WSL detection (per Requirements.md Section 5.1.1)
+        import platform
+        if platform.system() == 'Windows':
+            print("Warning: Running on native Windows. Not all functionality may work as intended.\nFor full support, please run inside Windows Subsystem for Linux (WSL).", file=sys.stderr)
+        
         parser = argparse.ArgumentParser(
             prog="llama-server-wrapper",
             description="Wrapper for llama.cpp server operations"

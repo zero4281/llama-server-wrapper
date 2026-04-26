@@ -28,10 +28,10 @@ The suite consists of exactly these five files plus `conftest.py` (shared fixtur
 | File | Runner | Tests | Coverage area |
 |---|---|---|---|
 | `test_ui_manager_api.py` | unittest / standalone | 5 | Class structure, method signatures, color pair setup |
-| `test_ui_manager_comprehensive.py` | standalone (`run_tests()`) | 6 suites | Init/lifecycle, menu navigation, confirmation, progress bar, styling, edge cases |
-| `test_ui_manager_pytest.py` | pytest | 9 | Init fallback, arrow nav, number selection, cancel keys, confirmation inputs, progress bar, full workflow |
-| `test_timeout_pytest.py` | pytest | 7 | Timeout returns -1, timeout after navigation, multiple timeouts, timeout with various highlighted states, cancel after timeout, default option, empty options |
-| `test_ui_manager_terminal_sizes.py` | standalone (`run_tests()`) | 6 | 40×20 / 80×24 / 120×30 terminals, menu width calculation, progress bar adaptation |
+| `test_ui_manager_comprehensive.py` | standalone (`run_tests()`) | 7 suites | Init/lifecycle, menu navigation, confirmation, progress bar, styling, edge cases |
+| `test_ui_manager_pytest.py` | pytest | 38 | Init fallback, arrow nav, number selection, cancel keys, confirmation inputs, progress bar, full workflow, page jump, wrapping, `highlighted=None` |
+| `test_timeout_pytest.py` | pytest | 9 | Timeout returns -1, timeout after navigation, multiple timeouts, timeout with various highlighted states, cancel after timeout, default option, empty options, `default=False` timeout, `_screen=None` fallback |
+| `test_ui_manager_terminal_sizes.py` | standalone (`run_tests()`) | 10 | 40×20 / 80×24 / 120×30 terminals, menu width calculation, progress bar adaptation, spinner/determinate bars |
 
 **Do not add new test files.** New tests belong in the existing file that matches their coverage area (see Maintenance Rules).
 
@@ -88,7 +88,7 @@ with patch('ui_manager.curses', mock_curses):
 
 ## Standard Setup Patterns
 
-### Creating a UIManager instance (used across all files)
+### Creating a UIManager instance (used in tests for UIManager)
 
 ```python
 import curses
@@ -112,7 +112,7 @@ def create_ui(title="Test"):
     return ui
 ```
 
-### Driving `render_menu` — complete working pattern
+#### Driving `render_menu` — complete working pattern
 
 ```python
 def test_enter_selects_first_option():
@@ -133,7 +133,7 @@ def test_enter_selects_first_option():
     assert result == 0
 ```
 
-### Driving `render_confirmation` — complete working pattern
+#### Driving `render_confirmation` — complete working pattern
 
 ```python
 def test_n_cancels_confirmation():
@@ -295,18 +295,6 @@ Before committing a test that calls `render_menu` or `render_confirmation`:
 | `test_ui_manager_terminal_sizes.py` | 6 | 6 |
 
 ---
-
-## Coverage Gaps to Address
-
-The following behaviors are specified but not yet fully covered by the current tests. These are the priority areas for new tests:
-
-- `render_menu`: `KEY_PPAGE` / `KEY_NPAGE` page-jump behavior
-- `render_menu`: wrapping behavior when navigating past the first or last option
-- `render_menu`: `highlighted=None` as initial state
-- `render_confirmation`: `default=False` timeout path (currently only `default=True` is tested)
-- `render_confirmation`: `_screen is None` graceful fallback
-- `render_progress_bar`: spinner renders when `total=0`, determinate bar renders when `total>0`
-- Full integration flow: menu selection → confirmation → progress bar in sequence
 
 ---
 

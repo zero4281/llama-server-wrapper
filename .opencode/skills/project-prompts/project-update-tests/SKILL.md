@@ -3,9 +3,10 @@ name: project-update-tests
 description: Use this skill to review and update the test suite after code changes.
 ---
 # Skill Instructions
-**Constraint:** Do not modify any source files. Only modify files inside `./Tests/`.
-⚠️ **AGENT BOUNDARY** — The orchestrator must NOT read files inside `./Tests/` or execute any tests directly. All such actions must be delegated to @general.
-Use the todowrite tool to track all tasks.
+**Constraint:** Do not modify any source files. Only modify files inside `./Tests/`.  Use the todowrite tool to track all tasks. 
+
+⚠️ **AGENT BOUNDARY** — The orchestrator must NOT read files inside `./Tests/` or execute any tests directly. All such actions must be delegated to an @general agent. 
+
 **EXECUTION POLICY:** Perform only one task at a time. Do not initiate any agent until the output of the previous agent has been returned and reviewed. 
 
 ---
@@ -22,7 +23,7 @@ Include the following context in every task:
 - Return a written summary of findings, including a list of specific fixes needed.
 
 ### Task 1 — Coverage Gaps
-> Compare behaviours specified in the **Behaviour Specifications** and **Coverage Gaps** sections of `./Testing Strategy.md` against the existing tests. For each specified behaviour with no corresponding test, note it as a gap. New tests must go into the existing file that matches their coverage area — do not create new test files. Follow the standard setup pattern from `./Testing Strategy.md`. Return a written summary with a list of specific gaps found.
+> Compare behaviours specified in the **Behaviour Specifications** and **Coverage Gaps** sections of `./Testing Strategy.md` against the existing tests in `./Tests`. For each specified behaviour with no corresponding test, note it as a gap. New tests must go into the existing file that matches their coverage area — do not create new test files. Follow the standard setup pattern from `./Testing Strategy.md`. Return a written summary with a list of specific gaps found.
 
 **WAIT:** Do not proceed until Task 1 is complete and the summary is returned.
 
@@ -38,7 +39,7 @@ Include the following context in every task:
 
 ## Phase 2 — Fix
 
-Once all three analysis tasks are complete and their summaries are returned, use todowrite to create one task per finding. Assign each to @general.
+Once all three analysis tasks are complete and their summaries are returned, use todowrite to create one task per finding. Assign each task to @general one at a time.
 
 **Constraint:** You must create and execute these tasks one at a time. Wait for the agent to confirm the fix before moving to the next finding.
 
@@ -53,11 +54,11 @@ Each task must include:
 
 ## Phase 3 — Verify
 
-Use todowrite to create the following task and assign it to @general:
+Use todowrite to create the following task and assign it to an @general agent: Run `python3 -m pytest Tests/ -v` and return a summary of the results.
 
-> Run `python3 -m pytest Tests/ -v` and return the full output.
+Once the task is complete, for each failing test, use todowrite to create a new fix task.  Assign each task to an @general agent one at a time.  Have the agent do all of the analysis and code updates.  Send the agent a propmt with an appropriate amount of details.
 
-**Constraint:** Once the task is complete, review the returned output. For each failing test, use todowrite to create a new fix task assigned to @general, including the failure output and the file/test name. Repeat until all tests pass.
+Repeat until all tests pass.
 
 ---
 

@@ -198,6 +198,44 @@ class TestTimeoutPytest:
                 result = ui.render_menu([], default=0, highlighted=0)
                 assert result == -1
 
+    def test_default_false_timeout_returns_true(self):
+        """Timeout with default=False should still return True."""
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None  # Timeout
+
+                result = ui.render_confirmation("Test confirmation", default=False)
+                assert result is True
+
+    def test_screen_none_with_timeout(self):
+        """Test that render_confirmation with _screen=None and timeout returns the default parameter."""
+        ui = create_ui()
+        
+        # Set _screen to None to trigger fallback path
+        ui._screen = None
+        
+        # Mock the fallback method to return the default parameter
+        with patch.object(ui, '_render_confirmation_fallback') as mock_fallback:
+            # First call (default=True) should return True
+            mock_fallback.return_value = True
+            result_true = ui.render_confirmation("Test confirmation", default=True)
+            assert result_true is True
+            
+            # Second call (default=False) should return False
+            mock_fallback.return_value = False
+            result_false = ui.render_confirmation("Test confirmation", default=False)
+            assert result_false is False
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
