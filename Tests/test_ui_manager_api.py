@@ -25,7 +25,7 @@ def test_ui_manager_structure():
     assert hasattr(UIManager, 'render_progress_bar'), "UIManager should have render_progress_bar method"
     assert hasattr(UIManager, 'render_success'), "UIManager should have render_success method"
     assert hasattr(UIManager, 'render_error'), "UIManager should have render_error method"
-    assert hasattr(UIManager, 'print_header'), "UIManager should have print_header method"
+    assert hasattr(UIManager, 'print_message'), "UIManager should have print_message method"
     
     # Test 2: UIManagerError exists
     assert issubclass(UIManagerError, Exception), "UIManagerError should be an Exception subclass"

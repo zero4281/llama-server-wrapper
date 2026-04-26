@@ -689,8 +689,10 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
         ui_logger.warning("UI manager not using curses, falling back to console for confirmation")
     
     # Confirmation prompt
+    release_info = f"{release_tag} ({asset_name})"
     confirmed = ui.render_confirmation(
-        f"Release {release_tag} - {asset_name}"
+        "Proceed with installation?",
+        release_info=release_info
     )
     
     if not confirmed:
