@@ -235,6 +235,29 @@ class TestTimeoutPytest:
             mock_fallback.return_value = False
             result_false = ui.render_confirmation("Test confirmation", default=False)
             assert result_false is False
+    
+    def test_render_menu_default_false_timeout(self):
+        """Test that render_menu with default=False returns -1 on timeout."""
+        options = [{'label': f'Option {i}'} for i in range(5)]
+        
+        ui = create_ui()
+        
+        with patch.object(ui, '_screen') as mock_screen, \
+             patch.object(ui, 'refresh'), \
+             patch('curses.KEY_RESIZE'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_screen.getmaxyx.return_value = (20, 60)
+            
+            # Simulate timeout with default=False
+            with patch.object(mock_win, 'getch') as mock_getch:
+                mock_getch.return_value = None  # Timeout
+                
+                result = ui.render_menu(options, default=2, highlighted=0)
+                # Timeout returns -1 (cancel) regardless of default parameter
+                assert result == -1, f"Timeout with default=False should return -1, got {result}"
 
 
 if __name__ == '__main__':

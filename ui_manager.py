@@ -508,6 +508,10 @@ class UIManager:
         start_time = time.time()
         logger.info(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}, timeout={timeout}")
         
+        # Return -1 immediately for empty options list
+        if len(options) == 0:
+            return -1
+        
         # Check for non-interactive mode or curses failure at the start
         if (not sys.stdin.isatty() and not self._using_curses) or not self._screen:
             logger.warning(f"render_menu: stdin is not a TTY and curses not initialized, returning -1 with timeout={timeout}")

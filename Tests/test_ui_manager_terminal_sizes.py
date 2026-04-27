@@ -89,7 +89,7 @@ def test_small_terminal():
 
     with patch.object(ui, '_screen', mock_screen), \
          patch.object(ui, 'refresh'), \
-           patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         
         mock_win = mock_newwin.return_value
         mock_win.getyx.return_value = (0, 0)
@@ -135,7 +135,7 @@ def test_medium_terminal():
 
     with patch.object(ui, '_screen', mock_screen), \
          patch.object(ui, 'refresh'), \
-           patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+            patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
         
         mock_win = mock_newwin.return_value
         mock_win.getyx.return_value = (0, 0)
@@ -285,15 +285,8 @@ def test_progress_bar_adaptation():
     print("  ✓ Progress bar adaptation test passed")
 
 
-
-
-
 def test_menu_width_calculation_small_terminal():
-    """Test menu width calculation for 40-column terminal.
-    
-    Expected behavior: Menu width should be capped at 32 (40 - 8) and at least 24 (40 * 0.6).
-    Verify that windows are created with correct dimensions.
-    """
+    """Test menu width calculation for 40-column terminal."""
     # Direct calculation verification for 40-column terminal
     screen_width = 40
     screen_height = 20
@@ -332,11 +325,7 @@ def test_menu_width_calculation_small_terminal():
 
 
 def test_menu_width_calculation_large_terminal():
-    """Test menu width calculation for 120-column terminal.
-    
-    Expected behavior: Menu width should be capped at 112 (120 - 8) and at least 72 (120 * 0.6).
-    Verify that windows are created with correct dimensions.
-    """
+    """Test menu width calculation for 120-column terminal."""
     # Direct calculation verification for 120-column terminal
     screen_width = 120
     screen_height = 30
@@ -375,11 +364,7 @@ def test_menu_width_calculation_large_terminal():
 
 
 def test_progress_bar_window_adaptation():
-    """Verify progress bar window adapts to terminal width.
-    
-    Expected behavior: Progress bar width should scale with terminal but stay within bounds.
-    Verify that the progress bar is rendered with correct dimensions.
-    """
+    """Verify progress bar window adapts to terminal width."""
     test_cases = [
         (20, 40, "Small"),
         (24, 80, "Medium"),
@@ -420,11 +405,7 @@ def test_progress_bar_window_adaptation():
 
 
 def test_menu_and_progress_bar_combined():
-    """Test combined menu and progress bar rendering.
-    
-    Expected behavior: Both elements should respect their calculated widths.
-    Verify that multiple windows are created and sized correctly.
-    """
+    """Test combined menu and progress bar rendering."""
     ui, mock_curses = setup_ui_for_size(80, 24)
     
     mock_screen = MagicMock()
@@ -489,5 +470,152 @@ def test_menu_and_progress_bar_combined():
     print("  ✓ Menu and progress bar combined rendering passed")
 
 
+# Additional progress bar window tests
+def test_progress_bar_window_height():
+    """Test that progress bar window is created with height=6."""
+    ui, mock_curses = setup_ui_for_size(80, 24)
+    
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (24, 80)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+         patch('builtins.input'):
+        
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+        mock_win.getch.return_value = curses.KEY_RESIZE
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
+        
+        ui.render_progress_bar("test.zip", 500, 1000, percent=50.0)
+        
+        call_args = mock_newwin.call_args
+        height, width, y, x = call_args[0]
+        
+        assert height == 6, f"Height should be 6, got {height}"
+        assert width == 50, f"Width should be 50, got {width}"
+        
+        ui._cleanup_terminal()
+    print("  ✓ Progress bar window height test passed")
+
+
+def test_progress_bar_width_calculated_from_terminal():
+    """Test that progress bar width is calculated correctly based on terminal size."""
+    test_cases = [
+        (20, 40, 30, "Small terminal"),
+        (24, 80, 50, "Medium terminal"),
+        (30, 120, 50, "Large terminal"),
+    ]
+    
+    for terminal_height, terminal_width, expected_width, name in test_cases:
+        ui, mock_curses = setup_ui_for_size(terminal_width, terminal_height)
+        
+        mock_screen = MagicMock()
+        mock_screen.getmaxyx.return_value = (terminal_height, terminal_width)
+        
+        with patch.object(ui, '_screen', mock_screen), \
+             patch.object(ui, 'refresh'), \
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('builtins.input'):
+            
+            mock_win = mock_newwin.return_value
+            mock_win.getyx.return_value = (0, 0)
+            mock_win.getch.return_value = curses.KEY_RESIZE
+            mock_win.erase.return_value = None
+            mock_win.addstr.return_value = None
+            mock_win.attron.return_value = None
+            mock_win.attroff.return_value = None
+            mock_win.refresh.return_value = None
+            
+            ui.render_progress_bar("test.zip", 100, 200)
+            
+            call_args = mock_newwin.call_args
+            height, width, y, x = call_args[0]
+            
+            assert height == 6, f"Height should be 6 for {name}, got {height}"
+            assert width == expected_width, f"Width should be {expected_width} for {name}, got {width}"
+        
+        ui._cleanup_terminal()
+    
+    print("  ✓ Progress bar width calculation test passed")
+
+
+def test_progress_bar_window_y_position():
+    """Test that progress bar window is positioned correctly."""
+    ui, mock_curses = setup_ui_for_size(80, 24)
+    
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (24, 80)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+         patch('builtins.input'):
+        
+        mock_win = mock_newwin.return_value
+        mock_win.getyx.return_value = (0, 0)
+        mock_win.getch.return_value = curses.KEY_RESIZE
+        mock_win.erase.return_value = None
+        mock_win.addstr.return_value = None
+        mock_win.attron.return_value = None
+        mock_win.attroff.return_value = None
+        mock_win.refresh.return_value = None
+        
+        ui.render_progress_bar("test.zip", 500, 1000)
+        
+        call_args = mock_newwin.call_args
+        height, width, y, x = call_args[0]
+        
+        expected_y = 24 - 6 - 2  # terminal_height - bar_height - 2 = 16
+        expected_x = 2  # fixed x_offset
+        
+        assert height == 6, f"Height should be 6, got {height}"
+        assert y == expected_y, f"Y position should be {expected_y}, got {y}"
+        assert x == expected_x, f"X position should be {expected_x}, got {x}"
+        
+        ui._cleanup_terminal()
+    print("  ✓ Progress bar window position test passed")
+
+
 if __name__ == '__main__':
     run_tests()
+
+
+def test_menu_width_calculation_small_terminal():
+    """Test menu width calculation for 40-column terminal."""
+    # Direct calculation verification
+    screen_width = 40
+    options = [{'label': 'Option'} for _ in range(5)]
+    max_label_len = max(len(opt.get('label', '')) for opt in options)
+    min_width = int(screen_width * 0.6)  # 24
+    menu_width = max(min_width, min(max_label_len + 15, screen_width - 8)) + 2
+    
+    assert menu_width >= 24, f"Menu width {menu_width} should be at least 24"
+    assert menu_width <= 32, f"Menu width {menu_width} should be at most 32"
+    
+    ui, mock_curses = setup_ui_for_size(40, 20)
+    mock_screen = MagicMock()
+    mock_screen.getmaxyx.return_value = (20, 40)
+    
+    with patch.object(ui, '_screen', mock_screen), \
+         patch.object(ui, 'refresh'), \
+         patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+        
+        menu_win = ui.create_window(len(options) + 4, menu_width, 2, 2)
+        
+        call_args = mock_newwin.call_args
+        assert call_args is not None
+        win_height, win_width, _, _ = call_args[0]
+        
+        assert win_width == menu_width, f"Window width should be {menu_width}"
+        assert win_height == len(options) + 4, f"Window height should be {len(options) + 4}"
+    
+    ui._cleanup_terminal()
+    print("  ✓ Menu width calculation test passed")
+
+

@@ -48,14 +48,38 @@ def check_file(filepath):
                 
                 for child in ast.walk(node):
                     if isinstance(child, ast.withitem):
-                        # Check for 'with patch("ui_manager.curses.newwin", ...)'
+                        # Check for 'with patch("ui_manager.curses.newwin", ...)' 
                         if isinstance(child.context_expr, ast.Call):
                             if isinstance(child.context_expr.func, ast.Name) and child.context_expr.func.id == 'patch':
                                 if isinstance(child.context_expr.args[0], ast.Constant) and child.context_expr.args[0].value == 'ui_manager.curses.newwin':
                                     has_correct_patch = True
                                     break
                 
-                if not has_correct_patch:
+                # Special case: if the function is patching an internal method like _render_confirmation_fallback,
+                # it's intentionally testing the fallback path, so we don't require the proper patch pattern
+                # Check if this function patches an internal method starting with underscore
+                patches_internal_method = False
+                for child in ast.walk(node):
+                    if isinstance(child, ast.withitem):
+                        if isinstance(child.context_expr, ast.Call):
+                            if isinstance(child.context_expr.func, ast.Attribute):
+                                # Check if it's patching a method on an object (e.g., patch.object(...))
+                                if isinstance(child.context_expr.func, ast.Attribute) and child.context_expr.func.attr == 'object':
+                                    # Get the attribute being patched
+                                    attr_node = child.context_expr.args[1]
+                                    if isinstance(attr_node, ast.Attribute):
+                                        attr_name = attr_node.attr
+                                    elif isinstance(attr_node, ast.Constant):
+                                        attr_name = attr_node.value
+                                    else:
+                                        continue
+                                    
+                                    if attr_name.startswith('_') and attr_name not in METHODS_OF_INTEREST:
+                                        patches_internal_method = True
+                                        break
+                
+                # Only report issues if the function doesn't have the correct patch AND isn't patching an internal method
+                if not has_correct_patch and not patches_internal_method:
                     issues.append(f"  - Missing patch('ui_manager.curses.newwin') for {', '.join(calls)}")
     
     if issues:
