@@ -508,7 +508,8 @@ def test_timeout_during_confirmation_dialog():
          patch('ui_manager.curses.newwin') as mock_newwin2, \
          patch('builtins.input', return_value='\n'), \
          patch('sys.stdin.readline', return_value='\n'), \
-         patch('sys.stdin.isatty', return_value=False):
+         patch('sys.stdin.isatty', return_value=False), \
+         patch.object(ui, '_render_confirmation_fallback', return_value=True):
         mock_win2 = MagicMock()
         mock_win2.getyx.return_value = (0, 0)
         mock_win2.erase.return_value = None
@@ -527,7 +528,8 @@ def test_timeout_during_confirmation_dialog():
          patch('ui_manager.curses.newwin') as mock_newwin3, \
          patch('builtins.input', return_value='\n'), \
          patch('sys.stdin.readline', return_value='\n'), \
-         patch('sys.stdin.isatty', return_value=False):
+         patch('sys.stdin.isatty', return_value=False), \
+         patch.object(ui, '_render_confirmation_fallback', return_value=True):
         mock_win3 = MagicMock()
         mock_win3.getyx.return_value = (0, 0)
         mock_win3.erase.return_value = None

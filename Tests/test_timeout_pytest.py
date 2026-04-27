@@ -202,10 +202,14 @@ class TestTimeoutPytest:
         """Timeout with default=False should still return True."""
         ui = create_ui()
         
+        mock_time = MagicMock()
+        mock_time.side_effect = [0.0, 0.002]  # First call for start_time, second for elapsed check
+        
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('time.time', mock_time):
 
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
@@ -214,7 +218,8 @@ class TestTimeoutPytest:
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = None  # Timeout
 
-                result = ui.render_confirmation("Test confirmation", default=False)
+                # Provide timeout parameter to trigger timeout behavior
+                result = ui.render_confirmation("Test confirmation", default=False, timeout=0.001)
                 assert result is True
 
     def test_screen_none_with_timeout(self):
