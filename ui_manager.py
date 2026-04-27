@@ -1041,7 +1041,7 @@ class UIManager:
         Fallback for confirmation prompts.
         """
         response = self._render_console_fallback(message, "Proceed? [Y/n]: ")
-        return response in ('', 'y', 'yes')
+        return response in ('y', 'yes') or (response == '' and default)
     
     def render_confirmation(self, message: str, default: bool = True, 
                            timeout: Optional[int] = None) -> bool:
