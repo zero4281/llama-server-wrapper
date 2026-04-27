@@ -2,235 +2,31 @@
 
 ## Current Bug Reports
 
-### 🟣 CRITICAL: Arrow keys cause crashes and invalid key handling in menu navigation
-**Status:** ✅ **RESOLVED**  
-**Priority:** **P0** - Critical; UI unusable with standard navigation
+### 🟠 MEDIUM: Missing confirmation prompt after archive selection
+**Status:** 🔴 **OPEN**  
+**Priority:** **P2** - Feature incomplete; UI does not work as expected when using stdin redirection
 
 **Description:**
-When running `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`, the program works with numeric key input but crashes if arrow keys are used. Page Up/Page Down don't work. Escape key doesn't exit but causes `^[` to appear on screen.
+When running `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama <<< $'1\n8\n3\n'`, the program fails to display the confirmation prompt after the user selects a release tag, platform, and zip file. The confirmation dialog never appears, and the installation does not proceed.
 
 **Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-2. Try navigating menus with arrow keys (↑, ↓)
-3. **Expected:** Normal menu navigation
-4. **Actual:** Program crashes or displays invalid characters (`^[`)
+1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama <<< $'1\n8\n3\n'`
+2. The program navigates through:
+   - Release tag selection menu
+   - Platform selection menu
+   - Zip file selection menu
+3. **Expected:** After selecting a zip file, a bordered curses window should appear with a confirmation prompt
+4. **Actual:** The confirmation prompt never appears; the program either hangs or exits without completing the installation
 
 **Key Symptoms:**
-- Arrow keys cause crashes during menu navigation
-- Page Up/Page Down keys have no effect
-- Escape key doesn't exit; displays `^[` on screen instead
-- Valid input: numeric keys work correctly (`1\n8\n3\n`)
-- Invalid input: arrow keys crash (`\033[B`)
+- Valid input sequence: `1\n8\n3\n` (release tag, platform, zip file)
+- The menus display and accept input correctly
+- After the final zip file selection, the confirmation prompt is missing
+- The installation does not proceed to download
 
 **Affected Components:**
-- `ui_manager.py` - menu rendering and input handling (Section 8.3 of Requirements.md)
-- `curses` module - terminal input interpretation
-- `main.py` - CLI entry point that delegates to UIManager
-
-**Dependencies:**
-- Requirements.md Section 8.3 (Numbered menus with arrow key navigation)
-- Testing Strategy.md (mocking patterns for curses-related tests)
-
----
-
-### 🔴 HIGH: Missing confirmation prompt after llama.cpp installation selection
-**Status:** ✅ **RESOLVED**  
-**Priority:** **P1** - Major feature broken; user cannot confirm installation
-
-**Description:**  
-When running `./llama-server-wrapper --install-llama`, the program navigates through release tag selection, platform detection, and zip file selection menus correctly. However, after completing these selections, the required confirmation prompt (as specified in Requirements.md Section 6.3.3) never appears. The installation proceeds to download without user confirmation.
-
-**Reproduction Steps:**
-1. Run: `./llama-server-wrapper --install-llama`
-2. Navigate through release tag selection menu
-3. Select a release tag
-4. Navigate through platform selection menu  
-5. Select a platform
-6. Navigate through zip file selection menu
-7. Select a zip file
-8. **Expected:** A bordered curses window should appear with:
-   ```
-   +----------------------------------------------------------+
-   | Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) |
-   | Proceed with installation? [Y/n]:                        |
-   +----------------------------------------------------------+
-   ```
-9. **Actual:** No confirmation prompt appears; installation proceeds automatically
-
-**Affected Components:**
-- `llama_updater.py` (Section 6.3.3) - confirmation prompt rendering logic
-- `ui_manager.py` (Section 8.4) - `render_confirmation` method
-- `main.py` (line 252) - entry point that delegates to `LlamaUpdater`
-
-**Dependencies:**
-- Requirements.md Section 6.3.3 (llama.cpp confirmation prompt)
-- Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
-
----
-
-### 🟠 MEDIUM: Title and footer bars in menu windows disappear or draw incorrectly
-**Status:** ✅ **RESOLVED**  
-**Priority:** **P3** - Low; UI visual regression; menus still functional
-
-**Resolution Summary:**
-The root cause was that the `redraw` function in `render_menu` was calling `win.box()` at the **end** of the function, which cleared the entire window but didn't maintain the border properly. The fix involved:
-1. Moving `win.box()` to the **beginning** of `redraw` to ensure border is drawn first
-2. Adding `win.erase()` after drawing the border to clear content inside the border
-3. Fixing separator line positioning in `render_confirmation`
-
-**Verification:**
-The menus now display with stable title and footer bars throughout menu interaction. Each window maintains its proper bordered appearance, and there are no ghost artifacts when navigating between menus.
-
-**Affected Components:**
-- `ui_manager.py` - `render_menu` method (redraw function)
-- `ui_manager.py` - `render_confirmation` method
-
-**Dependencies:**
-- Requirements.md Section 8.3 (Numbered menus with bordered curses windows)
-- Requirements.md Section 8.4 (Confirmation prompts must never drop out of curses environment)
-
----
-
-### 🟠 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** ✅ **RESOLVED**
-**Priority:** **P3** - Cosmetic issue; debugging impaired
-
-**Resolution Summary:**
-The logger is now properly configured and writing to the console when debug mode is enabled.
-
-**Verification:**
-Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-Provide inputs: `1\n8\n3\n`
-Observe that logger messages now appear in the output.
-
----
-
-### 🟠 HIGH: ui_manager.py:render_confirmation() has multiple redundant fallback sections
-**Status:** ✅ **RESOLVED**
-**Priority:** **P2** - Code quality issue; maintenance impaired
-
-**Resolution Summary:**
-- Consolidated all fallback logic into a single `_render_confirmation_fallback()` method
-- Centralized error handling with one try/except block
-- Removed redundant fallback sections and duplicate code
-
----
-
-### 🔴 CRITICAL: Arrow keys cause crashes and invalid key handling in menu navigation
-**Status:** ✅ **RESOLVED**
-**Priority:** **P0** - Critical; UI unusable with standard navigation
-
-**Resolution Summary:**
-Fixed key handling in `render_menu` by properly mapping arrow keys and escape sequence handling.
-
----
-
-### 🟠 MEDIUM: Program drops out of curses and displays print on line 1312
-**Status:** ✅ **RESOLVED**
-**Priority:** **P3** - Functional regression; curses environment dropped unexpectedly
-
-**Resolution Summary:**
-Fixed fallback mechanism to only trigger when curses is genuinely unavailable.
-
----
-
-### 🟠 LOW: Menus not displayed in correctly bordered windows
-**Status:** ✅ **RESOLVED**
-**Priority:** **P3** - Cosmetic issue; user can still complete installation
-
-**Resolution Summary:**
-Added `win.box()` at the beginning of `redraw` to maintain border throughout menu lifetime.
-
----
-
-### 🟠 MEDIUM: Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification
-**Status:** 🔴 OPEN  
-**Priority:** **P2** - Feature incomplete; UI does not conform to documented requirements
-
-**Description:**  
-When running `./llama-server-wrapper --install-llama`, after selecting a release tag, platform, and zip file, the confirmation prompt does not match the layout specified in `Requirements.md` Section 6.3.3. The current implementation only displays a simple message without the required footer bar, button layout, or visual styling.
-
-**Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-2. Navigate through the release tag selection menu and select an option (e.g., `1`)
-3. Navigate through the platform selection menu and select an option
-4. Navigate through the zip file selection menu and select an option
-5. **Expected:** A bordered curses window should appear with:
-   - Title line: "Selected release: vX.Y.Z (filename.zip)"
-   - Prompt line: "Proceed with update?"
-   - Button row: `▶ [ Yes ]  [ No ]` with a ▶ (▶) arrow pointing to the active button
-   - Proper border around the entire window
-6. **Actual:** The confirmation prompt appears but lacks the specified border styling, footer prompt, and button layout with the ▶ indicator
-
-**Affected Components:**
-- `llama_updater.py` (line 692-694) - confirmation prompt rendering call
-- `ui_manager.py` - `render_confirmation` method (does not support button layout)
-- `main.py` - entry point that delegates to `LlamaUpdater`
-
-**Dependencies:**
-- Requirements.md Section 5.3.2 (Confirmation prompt border styling specification)
-- Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
-
-**Expected Behavior (per Requirements.md 5.3.2):**
-```
-┌─────────────────────────────────────────────────────┐
-│  Selected: v1.2.0 (llama-server-wrapper-v1.2.0.zip) │
-│  Proceed with update?                               │
-│                                                     │
-│            ▶ [ Yes ]          [ No  ]               │
-└─────────────────────────────────────────────────────┘
-```
-
-**Current Behavior:**
-- Simple message displayed without border
-- No footer prompt "Proceed with update?"
-- No button layout with ▶ indicator
-- Does not follow the visual specification in Requirements.md
-
-**Impact:**
-- UI inconsistency with documented requirements
-- User confusion about how to proceed
-- Non-compliance with the software requirements specification
-- Missing visual feedback (▶ indicator) for the default/active option
-
-**Workaround:**
-- N/A (feature is incomplete)
-
-**Estimated Fix Effort:**
-- Medium - Requires either extending `render_confirmation` to support button layout, or implementing a custom confirmation dialog in `llama_updater.py` that renders the exact layout from Requirements.md
-
-**Related Documentation:**
-- `./Requirements.md` Section 5.3.2 - Exact layout specification
-- `./Plan.md` Section 6.3.3 - llama.cpp confirmation prompt requirement
-
-
----
-
-### 🟠 MEDIUM: Confirmation prompt in llama_updater.py uses render_confirmation() but Requirements.md Section 6.3.3 specifies a different layout
-**Status:** 🔴 OPEN  
-**Priority:** **P2** - Feature incomplete; UI does not conform to documented requirements
-
-**Description:**  
-When running `./llama-server-wrapper --install-llama`, after selecting a release tag and zip file, the confirmation prompt does not match the layout specified in `Requirements.md` Section 6.3.3. The current implementation calls `render_confirmation()` but the requirements specify a bordered curses window with button indicators (`▶ [ Yes ]  [ No ]`) and a specific footer prompt format.
-
-**Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-2. Navigate through release tag selection menu and select an option (e.g., `1`)
-3. Navigate through zip file selection menu and select an option
-4. **Expected:** A bordered curses window should appear with:
-   ```
-   ┌──────────────────────────────────────────────────────────┐
-   │ Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) │
-   │ Proceed with installation?                               │
-   │                                                          │
-   │             ▶ [ Yes ]          [ No  ]                   │
-   └──────────────────────────────────────────────────────────┘
-   ```
-5. **Actual:** The confirmation prompt appears but uses the default `render_confirmation()` format which lacks the button indicators (`▶`) and proper footer layout
-
-**Affected Components:**
-- `llama_updater.py` (line 692-694) - confirmation prompt rendering call
-- `ui_manager.py` - `render_confirmation` method (does not support button layout with `▶` indicator)
+- `llama_updater.py` (lines 688-694) - confirmation prompt rendering logic
+- `ui_manager.py` - `render_confirmation` method (does not properly handle fallback when curses is unavailable)
 - `main.py` - entry point that delegates to `LlamaUpdater`
 
 **Dependencies:**
@@ -238,11 +34,34 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 - Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
 - Testing Strategy.md (mocking patterns for curses-related tests)
 
+**Root Cause Analysis:**
+The issue occurs when stdin is redirected (e.g., via `<<< $'...'`). In this case:
+1. `UIManager.__init__` attempts to initialize curses but fails because stdin is not a TTY
+2. The `_using_curses` flag and `_screen` attribute are not properly set
+3. The code at `llama_updater.py:688-689` checks these flags and logs a warning
+4. However, `render_confirmation` is still called, which fails silently when curses is unavailable
+5. The fallback mechanism in `render_confirmation` does not properly handle this scenario, causing the confirmation to be skipped
+
+**Expected Behavior (per Requirements.md 6.3.3):**
+```
+┌──────────────────────────────────────────────────────────┐
+│ Selected release: b8800 (llama-b8800-bin-ubuntu-x64.zip) │
+│ Proceed with installation?                               │
+│                                                          │
+│             ▶ [ Yes ]          [ No  ]                   │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Current Behavior:**
+- The confirmation prompt is completely missing
+- The installation does not proceed to download the archive
+
 **Workaround:**
-- N/A (feature is incomplete)
+- Interactive mode with a real TTY (no stdin redirection)
+- Manually trigger the confirmation by interrupting the process (not recommended)
 
 **Estimated Fix Effort:**
-- Medium - Requires either extending `render_confirmation` to support button layout with `▶` indicator, or implementing a custom confirmation dialog in `llama_updater.py` that renders the exact layout from Requirements.md
+- Medium - Requires extending the fallback mechanism in `render_confirmation` to properly handle cases where curses is unavailable, or implementing a custom confirmation dialog in `llama_updater.py` that renders the exact layout from Requirements.md
 
 **Related Documentation:**
 - `./Requirements.md` Section 6.3.3 - Exact layout specification with `▶ [ Yes ]  [ No ]` buttons
@@ -253,23 +72,14 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 ## Project Roadmap
 
 | Priority | Task | Status |
-| :--- | :--- | :--- |
-| **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🟢 Resolved |
-| **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🟢 Resolved |
-| **P2 (Medium)** | Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification | 🟢 Resolved |
-| **P2 (Medium)** | Confirmation prompt in llama_updater.py uses render_confirmation() but Requirements.md Section 6.3.3 specifies a different layout | 🔴 Open |
-| **P3 (Low)** | Title and footer bars in menu windows disappear or draw incorrectly | 🟢 Resolved |
-| **P3 (Low)** | Menus not displayed in correctly bordered windows | 🟢 Resolved |
-| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟢 Resolved |
-| **P3 (Medium)** | Program drops out of curses and displays print on line 1312 | 🟢 Resolved |
-| **P3 (Low)** | Logger debug message never prints | 🟢 Resolved |
+| :--- | --- | --- |
+| **P2 (Medium)** | Missing confirmation prompt after archive selection | 🔴 Open |
 
 ---
 
 ## Summary
 
-**Last Updated:** April 25, 2026  
-**Overall Status:** 1 open bug; all other issues resolved.
+**Last Updated:** April 26, 2026  
+**Overall Status:** 1 open bug.
 
-* **Open:** Confirmation prompt layout (P2)
-* **Resolved:** Arrow key crashes (P0), missing confirmation prompt (P1), title/footer bar disappearance, logger debug messages, redundant fallback sections, curses environment drops, and menu border issues.
+* **Open:** Missing confirmation prompt after archive selection (P2)
