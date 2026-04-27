@@ -16,12 +16,14 @@ When running `./llama-server-wrapper --install-llama`, after selecting a release
 4. Navigate through zip file selection menu and select an option
 5. Hit enter on the archive selection
 6. **Expected:** A bordered curses window should appear with:
-    ```
-    +----------------------------------------------------------+
-    | Selected release: vX.Y.Z (filename.zip)                   |
-    | Proceed with installation? [Y/n]:                         |
-    +----------------------------------------------------------+
-    ```
+```
+┌─────────────────────────────────────────────────────┐
+│  Selected release: vX.Y.Z (filename.zip)            │
+│  Proceed with installation?                         │
+│                                                     │
+│            ▶ [ Yes ]          [ No  ]               │
+└─────────────────────────────────────────────────────┘
+```
 7. **Actual:** No confirmation prompt appears; installation proceeds automatically
 
 **Key Symptoms:**

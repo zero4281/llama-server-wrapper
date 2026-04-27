@@ -1103,14 +1103,45 @@ class UIManager:
                 prompt_win.addstr(2, 0, truncated_msg)
                 prompt_win.attroff(white_attr)
             
-            # Prompt
-            prompt_str = "Proceed? [Y/n]: "
-            prompt_win.attron(curses.A_REVERSE | curses.A_BOLD)
-            prompt_win.addstr(3, 1, prompt_str)
-            prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
+            # Define redraw function for Yes/No menu
+            def redraw(hi_idx):
+                try:
+                    # Clear window and redraw border
+                    prompt_win.erase()
+                    prompt_win.box()
+                    
+                    # Title
+                    if white_attr is not None:
+                        prompt_win.attron(white_attr)
+                        prompt_win.addstr(0, 1, "Confirm".center(msg_width - 2))
+                        prompt_win.attroff(white_attr)
+                        prompt_win.addstr(1, 1, "-" * (msg_width - 4))
+                    
+                    # Message
+                    if white_attr is not None:
+                        prompt_win.attron(white_attr)
+                        truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
+                        prompt_win.addstr(2, 0, truncated_msg)
+                        prompt_win.attroff(white_attr)
+                    
+                    # Yes/No options
+                    if hi_idx == 0:
+                        prompt_win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
+                    prompt_win.addstr(3, 0, f"  [ Yes ]")
+                    if hi_idx == 1:
+                        prompt_win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
+                    prompt_win.addstr(4, 0, f"  [ No  ]")
+                    prompt_win.attroff(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
+                    
+                    # Footer
+                    footer = "Use arrow keys to navigate, Enter to confirm, q/ESC to cancel"
+                    prompt_win.addstr(5, 0, footer[:msg_width - 2])
+                    prompt_win.refresh()
+                except curses.error:
+                    pass
             
-            prompt_win.refresh()
-            self._screen.refresh()
+            # Initial state
+            highlighted_idx = 0
             
             # Input loop with timeout
             while True:
@@ -1124,13 +1155,27 @@ class UIManager:
                     key = prompt_win.getch()
                 except (curses.error, OSError, EOFError) as e:
                     logger.error(f"Confirmation getch() error: {e}")
-                    raise
-
+                    continue
+                
                 # Handle key input
-                if key is None:
-                    # EOF/timeout - assume default (yes)
-                    logger.debug("Confirmation: timeout, assuming default yes")
-                    return True
+                if key == curses.KEY_UP:
+                    # Move to No option
+                    highlighted_idx = 1
+                    redraw(highlighted_idx)
+                    continue
+                
+                if key == curses.KEY_DOWN:
+                    # Move to Yes option
+                    highlighted_idx = 0
+                    redraw(highlighted_idx)
+                    continue
+                
+                if key in (curses.KEY_ENTER, 10, 13):
+                    # Confirm selection (Yes if highlighted_idx == 0)
+                    logger.debug(f"Confirmation: ENTER pressed, highlighted={highlighted_idx}, returning {highlighted_idx == 0}")
+                    self._screen.erase()
+                    self._screen.refresh()
+                    return highlighted_idx == 0
                 
                 if key == 27 or key == curses.KEY_RESIZE or key == curses.KEY_BACKSPACE:
                     # Cancel
@@ -1138,32 +1183,22 @@ class UIManager:
                     self._screen.erase()
                     return False
                 
-                elif key in (10, 13, curses.KEY_ENTER):  # Enter
-                    # Confirm (default yes)
-                    logger.debug("Confirmation: ENTER pressed, confirming")
-                    self._screen.erase()
-                    self._screen.refresh()
-                    return True
-                
-                elif key in (ord('y'), ord('Y')):
-                    # Confirm
+                if key in (ord('y'), ord('Y')):
+                    # Confirm (Yes)
                     logger.debug("Confirmation: 'y' pressed, confirming")
                     self._screen.erase()
                     self._screen.refresh()
                     return True
                 
-                elif key in (ord('n'), ord('N')):
-                    # Cancel
+                if key in (ord('n'), ord('N')):
+                    # Cancel (No)
                     logger.debug("Confirmation: 'n' pressed, cancelling")
                     self._screen.erase()
                     self._screen.refresh()
                     return False
                 
-                # Timeout - assume default (yes)
-                logger.debug("Confirmation: timeout, assuming default yes")
-                self._screen.erase()
-                self._screen.refresh()
-                return True
+                # Timeout - redraw to refresh display
+                redraw(highlighted_idx)
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during confirmation: {e}")
             return self._render_confirmation_fallback(message, default)
