@@ -389,10 +389,14 @@ class TestConfirmationTimeout:
         """Timeout in confirmation always returns True (assumed yes)."""
         ui = create_ui()
         
+        mock_time = MagicMock()
+        mock_time.side_effect = [0.0, 0.002]
+        
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('time.time', mock_time):
             
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
@@ -403,7 +407,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Timeout always returns True regardless of default parameter
-                result = ui.render_confirmation("Are you sure?", default=False)
+                result = ui.render_confirmation("Are you sure?", default=False, timeout=0.001)
                 assert result is True, f"Timeout should return True, got {result}"
     
     def test_timeout_independent_of_default(self):
@@ -417,19 +421,23 @@ class TestConfirmationTimeout:
         ]
         
         for default_value, expected_result in test_cases:
+            mock_time = MagicMock()
+            mock_time.side_effect = [0.0, 0.002]  # First call for start_time, second for elapsed
+            
             with patch.object(ui, '_screen') as mock_screen, \
                  patch.object(ui, 'refresh'), \
                  patch('curses.KEY_RESIZE'), \
-                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+                 patch('time.time', mock_time):
+
                 mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
                 mock_screen.getmaxyx.return_value = (20, 60)
                 
                 with patch.object(mock_win, 'getch') as mock_getch:
-                    mock_getch.return_value = None  # Timeout
+                    mock_getch.return_value = None  # Timeout (only if timeout check doesn't trigger first)
                     
-                    result = ui.render_confirmation("Test", default=default_value)
+                    result = ui.render_confirmation("Test", default=default_value, timeout=0.001)
                     assert result == expected_result, \
                         f"Timeout with default={default_value} should return {expected_result}, got {result}"
 
@@ -437,11 +445,15 @@ class TestConfirmationTimeout:
         """Timeout in confirmation with default=False returns True (assumed yes)."""
         ui = create_ui()
         
+        mock_time = MagicMock()
+        mock_time.side_effect = [0.0, 0.002]
+        
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
-
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('time.time', mock_time):
+            
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
             mock_screen.getmaxyx.return_value = (20, 60)
@@ -451,7 +463,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Timeout always returns True regardless of default parameter
-                result = ui.render_confirmation("Are you sure?", default=False)
+                result = ui.render_confirmation("Are you sure?", default=False, timeout=0.001)
                 assert result is True, f"Timeout with default=False should return True, got {result}"
 
     def test_confirmation_graceful_fallback_when_screen_is_none(self):
@@ -492,10 +504,14 @@ class TestConfirmationTimeout:
         """
         ui = create_ui()
         
+        mock_time = MagicMock()
+        mock_time.side_effect = [0.0, 0.002]
+        
         with patch.object(ui, '_screen') as mock_screen, \
              patch.object(ui, 'refresh'), \
              patch('curses.KEY_RESIZE'), \
-             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
+             patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+             patch('time.time', mock_time):
             
             mock_win = mock_newwin.return_value
             mock_win.getyx.return_value = (0, 0)
@@ -506,7 +522,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Even with default=False, timeout returns True
-                result = ui.render_confirmation("Test message", default=False)
+                result = ui.render_confirmation("Test message", default=False, timeout=0.001)
                 assert result is True, \
                     f"Timeout with default=False should return True, got {result}"
     
@@ -526,11 +542,15 @@ class TestConfirmationTimeout:
         ]
         
         for default_value, expected_result in test_cases:
+            mock_time = MagicMock()
+            mock_time.side_effect = [0.0, 0.002]  # First call for start_time, second for elapsed
+            
             with patch.object(ui, '_screen') as mock_screen, \
                  patch.object(ui, 'refresh'), \
                  patch('curses.KEY_RESIZE'), \
-                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin:
-            
+                 patch('ui_manager.curses.newwin', return_value=MagicMock()) as mock_newwin, \
+                 patch('time.time', mock_time):
+
                 mock_win = mock_newwin.return_value
                 mock_win.getyx.return_value = (0, 0)
                 mock_screen.getmaxyx.return_value = (20, 60)
@@ -539,7 +559,7 @@ class TestConfirmationTimeout:
                 with patch.object(mock_win, 'getch') as mock_getch:
                     mock_getch.return_value = None
                     
-                    result = ui.render_confirmation("Test", default=default_value)
+                    result = ui.render_confirmation("Test", default=default_value, timeout=0.001)
                     assert result == expected_result, \
                         f"Timeout with default={default_value} should return {expected_result}, got {result}"
 
