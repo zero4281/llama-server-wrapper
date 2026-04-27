@@ -604,7 +604,7 @@ def delete_existing_installation() -> None:
     try:
         if LLAMA_CPP_DIR.exists():
             shutil.rmtree(LLAMA_CPP_DIR)
-            print(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
+            ui_logger.debug(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
     except Exception as e:
         raise LlamaUpdaterError(f"Failed to delete existing llama-cpp folder: {e}")
 

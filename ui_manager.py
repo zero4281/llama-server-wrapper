@@ -378,7 +378,7 @@ class UIManager:
 
     def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> Optional[curses.window]:
         """
-        Create a bordered window.
+        Create a bordered window with proper padding.
         
         Args:
             height, width: Window dimensions
@@ -399,8 +399,10 @@ class UIManager:
             win.box()
             
             if title:
-                win.addstr(0, 1, title.center(width - 2))
-                win.addstr(1, 0, "-" * (width - 2))
+                # Title goes in row 0, border in row 1
+                # Add padding: title at column 2, not column 1
+                win.addstr(0, 2, title.center(width - 4))
+                win.addstr(1, 1, "-" * (width - 4))
             
             return win
         except curses.error as e:
@@ -506,7 +508,7 @@ class UIManager:
             - Selection: '0'-'9' (ASCII 48-57)
         """
         start_time = time.time()
-        logger.info(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}, timeout={timeout}")
+        logger.debug(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}, timeout={timeout}")
         
         # Return -1 immediately for empty options list
         if len(options) == 0:
@@ -615,7 +617,7 @@ class UIManager:
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
                     win.attron(white_attr)
-                    win.addstr(0, 1, f"Select {self._title.lower()}".center(menu_width - 2))
+                    win.addstr(0, 2, f"Select {self._title.lower()}".center(menu_width - 4))
                     win.attroff(white_attr)
                     win.addstr(1, 1, "-" * (menu_width - 4))
                 for i, opt in enumerate(options):
@@ -1069,13 +1071,19 @@ class UIManager:
             self._screen.erase()
             self._screen.move(0, 0)
             
-            # Create window at bottom of screen
+            # Create the window
             width_int = int(width)
             msg_width = int(min(width_int - 4, max(width_int * self.MIN_WIDTH_PERCENT, 60)))
-            y_start = max(2, height - 6)
-            x_start = max(2, (width_int - msg_width) // 2)
             
-            prompt_win = self.create_window(4, msg_width, y_start, x_start)
+            # Calculate centered position
+            screen_height, screen_width = self._screen.getmaxyx()
+            menu_height = 8
+            # Window width = content width + 6 (2 for border + 4 for internal padding)
+            window_width = msg_width + 6
+            y_center = max(2, (screen_height - menu_height) // 2)
+            x_center = max(2, (screen_width - window_width) // 2)
+
+            prompt_win = self.create_window(menu_height, window_width, y_center, x_center)
             if prompt_win is None:
                 logger.error("Confirmation window creation failed")
                 return self._render_confirmation_fallback(message, default)
@@ -1110,38 +1118,48 @@ class UIManager:
                     prompt_win.erase()
                     prompt_win.box()
                     
-                    # Title
+                    # Title - row 0, centered with padding
                     if white_attr is not None:
                         prompt_win.attron(white_attr)
-                        prompt_win.addstr(0, 1, "Confirm".center(msg_width - 2))
+                        prompt_win.addstr(0, 3, "Confirm".center(msg_width - 4))
                         prompt_win.attroff(white_attr)
                         prompt_win.addstr(1, 1, "-" * (msg_width - 4))
                     
-                    # Message
+                    # Message - row 2, centered with padding
                     if white_attr is not None:
                         prompt_win.attron(white_attr)
-                        truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
-                        prompt_win.addstr(2, 0, truncated_msg)
+                        truncated_msg = message[:msg_width - 6] if len(message) > msg_width - 6 else message
+                        centered_msg = truncated_msg.center(msg_width - 4)
+                        prompt_win.addstr(2, 3, centered_msg)
                         prompt_win.attroff(white_attr)
                     
-                    # Yes/No options
+                    # Yes/No options - rows 3-4, centered with padding
+                    # Calculate button position for centering
+                    button_width = 12  # width of "  [ Yes ]"
+                    # Usable space inside border is window_width - 2 = msg_width + 4
+                    # Center buttons in usable space with 2 columns padding on each side
+                    button_x = 1 + (msg_width + 4 - button_width) // 2
+                    
                     if hi_idx == 0:
                         prompt_win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
-                    prompt_win.addstr(3, 0, f"  [ Yes ]")
+                    prompt_win.addstr(3, button_x, f"  [ Yes ]")
                     if hi_idx == 1:
                         prompt_win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
-                    prompt_win.addstr(4, 0, f"  [ No  ]")
+                    prompt_win.addstr(4, button_x, f"  [ No  ]")
                     prompt_win.attroff(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
                     
-                    # Footer
+                    # Footer - row 5, centered with padding
                     footer = "Use arrow keys to navigate, Enter to confirm, q/ESC to cancel"
-                    prompt_win.addstr(5, 0, footer[:msg_width - 2])
+                    truncated_footer = footer[:msg_width - 4] if len(footer) > msg_width - 4 else footer
+                    centered_footer = truncated_footer.center(msg_width - 4)
+                    prompt_win.addstr(5, 3, centered_footer)
                     prompt_win.refresh()
                 except curses.error:
                     pass
             
             # Initial state
             highlighted_idx = 0
+            redraw(highlighted_idx)
             
             # Input loop with timeout
             while True:
@@ -1222,7 +1240,7 @@ class UIManager:
             - Console fallback: Enter (10, 13)
         """
         start_time = time.time()
-        logger.info(f"render_progress_bar entry: file={Path(filename).name}, current={current:,}, total={total:,}")
+        logger.debug(f"render_progress_bar entry: file={Path(filename).name}, current={current:,}, total={total:,}")
         if percent is not None:
             logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}, percent={percent:.1f}%")
         else:
