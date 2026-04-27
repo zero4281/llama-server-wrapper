@@ -2,85 +2,64 @@
 
 ## Current Bug Reports
 
-### 🆕 MEDIUM: Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
-**Status:** 🆕 **NEW**
-**Priority:** **P3** - Cosmetic issue; debugging impaired
+### 🔴 CRITICAL: Confirmation prompt missing or not displaying correctly after archive selection
+**Status:** 🔴 **OPEN**  
+**Priority:** **P1** - Major feature broken; user cannot confirm installation
 
-**Description:**
-The logger.debug() call on line 1004 of ui_manager.py produces no output even when debug logging is enabled via `UI_MANAGER_DEBUG=1`. The logger.info() call on line 1003 also doesn't appear in the output. This indicates the logger is not being configured or is not writing to the console.
+**Description:**  
+When running `./llama-server-wrapper --install-llama`, after selecting a release tag, platform, and zip file, the required confirmation prompt (as specified in Requirements.md Section 6.3.3) either never appears or fails to display properly. The user reports that after hitting enter on the archive selection, no confirmation prompt is shown, yet the file downloads automatically.
 
 **Reproduction Steps:**
-1. Run: `UI_MANAGER_DEBUG=1 PYTHONWARNINGS=ignore python3 main.py --install-llama`
-2. Provide inputs: `1
-8
-3
-`
-3. Observe that no logger messages appear in the output, despite the debug flag being set
+1. Run: `./llama-server-wrapper --install-llama`
+2. Navigate through release tag selection menu and select an option
+3. Navigate through platform selection menu and select an option
+4. Navigate through zip file selection menu and select an option
+5. Hit enter on the archive selection
+6. **Expected:** A bordered curses window should appear with:
+    ```
+    +----------------------------------------------------------+
+    | Selected release: vX.Y.Z (filename.zip)                   |
+    | Proceed with installation? [Y/n]:                         |
+    +----------------------------------------------------------+
+    ```
+7. **Actual:** No confirmation prompt appears; installation proceeds automatically
+
+**Key Symptoms:**
+- Confirmation prompt appears to be missing after archive selection
+- Prompt fails to display when it should appear
+- Installation proceeds to download without user confirmation
+- Archive selection archive selection works (file downloads when enter is pressed)
 
 **Affected Components:**
-- ui_manager.py (line 1004)
-- Logger configuration in the application
-
-**Context:**
-- The logger is imported but appears to be not properly configured
-- When UI_MANAGER_DEBUG=1 is set, we expect debug messages to be visible
-- The logger.debug() call is clearly in the code but produces no output
+- `llama_updater.py` (Section 6.3.3) - confirmation prompt rendering logic
+- `ui_manager.py` (Section 8.4) - `render_confirmation` method
+- `main.py` - entry point that delegates to `LlamaUpdater`
 
 **Dependencies:**
-- Requirements.md Section 9.4 (Code style - logging)
-- Testing Strategy.md (logging expectations)
+- Requirements.md Section 6.3.3 (After a release tag and asset are selected, UIManager must render a bordered curses window displaying both selections and prompt for confirmation before downloading anything)
+- Requirements.md Section 8.4 (UIManager confirmation prompts must never drop out of curses environment)
 
----
-
-### 🔴 HIGH: ui_manager.py:render_confirmation() has multiple redundant fallback sections making it overly engineered
-**Status:** 🔴 **NEW**
-**Priority:** **P2** - Code quality issue; maintenance impaired
-
-**Description:**
-The `render_confirmation()` method in ui_manager.py has multiple fallback sections scattered throughout the implementation, making it overly engineered and difficult to maintain. Instead of a single, well-defined fallback mechanism, the method has at least 6 separate fallback paths:
-
-1. Lines 1014-1076: Console fallback when not using curses
-2. Lines 1135-1188: Validation fallback when window/screen invalid
-3. Lines 1282-1343: Missing curses attributes fallback
-4. Lines 1357-1438: Recovery fallback within input loop
-5. Lines 1479-1509: Exception handling fallback
-6. Lines 1510-1540: Another exception handling fallback
-
-This redundancy violates the principle of having a single source of truth for error handling and makes the code harder to understand, test, and maintain.
-
-**Reproduction Steps:**
-The issue is structural and present whenever the method is used. The complexity can be observed by examining the method code (lines 983-1544) and noting the multiple try/except blocks with fallback logic.
-
-**Affected Components:**
-- ui_manager.py (render_confirmation method)
-- main.py (uses for self-update confirmation)
-- llama_updater.py (uses for installation confirmation)
-
-**Why This Matters:**
-1. Violates Single Responsibility Principle and DRY principle
-2. Increases maintenance overhead
-3. Makes testing difficult (coverage gaps for _screen is None scenarios)
-4. Inconsistent error handling could lead to unpredictable behavior
-5. New developers find the code intimidating
-
-**Suggested Fix:**
-Consolidate all fallback logic into a single method (e.g., _render_confirmation_fallback()) called from a single error handler. This would centralize fallback implementation, make the normal flow clearer, and simplify testing.
-
----
 
 ## Project Roadmap
 
 | Priority | Task | Status |
-| :--- | --- | --- |
-| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🔴 New |
-| **P3 (Low)** | Logger debug message never prints (UI_MANAGER_DEBUG flag ignored) | 🆕 New |
+| :--- | :--- | :--- |
+| **P0 (Critical)** | Arrow keys cause crashes and invalid key handling in menu navigation | 🟢 Resolved |
+| **P1 (High)** | Missing confirmation prompt after llama.cpp installation selection | 🟢 Resolved |
+| **P1 (High)** | Confirmation prompt missing or not displaying correctly after archive selection | 🔴 Open |
+| **P2 (Medium)** | Confirmation prompt in llama_updater.py doesn't match Requirements.md border styling specification | 🟢 Resolved |
+| **P2 (Medium)** | Confirmation prompt in llama_updater.py uses render_confirmation() but Requirements.md Section 6.3.3 specifies a different layout | 🟢 Resolved |
+| **P3 (Low)** | Title and footer bars in menu windows disappear or draw incorrectly | 🟢 Resolved |
+| **P3 (Low)** | Menus not displayed in correctly bordered windows | 🟢 Resolved |
+| **P2 (High)** | ui_manager.py:render_confirmation() has multiple redundant fallback sections | 🟢 Resolved |
+| **P3 (Medium)** | Program drops out of curses and displays print on line 1312 | 🟢 Resolved |
+| **P3 (Low)** | Logger debug message never prints | 🟢 Resolved |
 
----
 
 ## Summary
 
-**Last Updated:** April 23, 2026
-**Overall Status:** 1 New bug identified; all previously logged issues have been resolved.
+**Last Updated:** April 26, 2026  
+**Overall Status:** 1 open bug.
 
-* **Resolved:** Issues relating to test structure, mocking patterns, general cleanup, and terminal input handling.
-* **New:** Logger debug message never prints (UI_MANAGER_DEBUG flag ignored)
+* **Open:** Confirmation prompt missing/not displaying (P1)
+* **Resolved:** Arrow key crashes (P0), missing confirmation prompt (P1), title/footer bar disappearance, logger debug messages, redundant fallback sections, curses environment drops, menu border issues, confirmation prompt layout (P2).

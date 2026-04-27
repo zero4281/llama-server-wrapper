@@ -67,14 +67,32 @@ import curses
 import sys
 import time
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 # Logging configuration
-UI_MANAGER_DEBUG = False
-UI_MANAGER_LOG_LEVEL = logging.INFO
+UI_MANAGER_DEBUG = os.environ.get("UI_MANAGER_DEBUG", "0").lower() in ("1", "true")
+UI_MANAGER_LOG_LEVEL = logging.DEBUG if UI_MANAGER_DEBUG else logging.INFO
+
+
+def _configure_logging():
+    """Configure logging for UIManager."""
+    if not logger.handlers:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(UI_MANAGER_LOG_LEVEL)
+
+
+# Configure logging at module load time
+_configure_logging()
 
 
 def enable_debug_mode():
@@ -89,19 +107,6 @@ def enable_debug_mode():
         handler.setLevel(logging.DEBUG)
     else:
         _configure_logging()
-
-def _configure_logging():
-    """Configure logging for UIManager."""
-    ui_logger = logging.getLogger("ui_manager")
-    if not ui_logger.handlers:
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
-        ui_logger.addHandler(handler)
-        ui_logger.setLevel(UI_MANAGER_LOG_LEVEL)
 
 
 class UIManagerError(Exception):
@@ -199,15 +204,23 @@ class UIManager:
     def _restore_terminal_state(self):
         """Restore terminal to original state."""
         try:
-            # Check if curses is properly initialized
-            if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
-                logger.error("curses module missing required attributes, falling back to console")
-                # Force console mode
-                self._using_curses = False
-                self._screen = None
-                self._color_pair = None
-                self._initialized = False
-                return
+            # Validate window if available before attempting operations
+            if self._screen:
+                if not self._validate_window(self._screen):
+                    logger.warning("Screen window invalid, falling back to console")
+                    self._using_curses = False
+                    self._screen = None
+                    self._color_pair = None
+                    self._initialized = False
+                    return
+            
+            # Reset terminal mode
+            try:
+                curses.echo()
+                curses.nocbreak()
+                curses.keypad(False)
+            except (AttributeError, OSError) as e:
+                logger.warning(f"Failed to reset terminal modes: {e}")
             
             # Reset terminal mode
             try:
@@ -250,8 +263,14 @@ class UIManager:
     def _cleanup_terminal(self):
         """Clean up curses and restore terminal."""
         if self._using_curses and self._screen:
-            # Check if curses is properly initialized before attempting cleanup
-            if hasattr(curses, 'keypad') and hasattr(curses, 'endwin'):
+            # Validate screen window before attempting cleanup
+            if not self._validate_window(self._screen):
+                logger.warning("Screen window invalid, forcing cleanup")
+                self._screen = None
+                self._color_pair = None
+                self._using_curses = False
+                self._initialized = False
+            else:
                 try:
                     self._restore_terminal_state()
                 except (AttributeError, OSError) as e:
@@ -261,13 +280,6 @@ class UIManager:
                     self._color_pair = None
                     self._using_curses = False
                     self._initialized = False
-            else:
-                # Curses is not properly initialized, force cleanup
-                logger.warning("curses not properly initialized, forcing cleanup")
-                self._screen = None
-                self._color_pair = None
-                self._using_curses = False
-                self._initialized = False
         else:
             # Even if not initialized, ensure clean state
             self._screen = None
@@ -342,27 +354,6 @@ class UIManager:
         except (curses.error, OSError, AttributeError):
             logger.warning("Window refresh failed, likely invalid")
             return False
-    
-    def print_header(self, text: str):
-        """Print header with color."""
-        if not self._using_curses:
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
-            return
-            
-        if not self._screen:
-            return
-            
-        try:
-            self._screen.attron(self._color_pair)
-            self._screen.addstr(0, 0, text.ljust(self.WIDTH))
-            self._screen.attroff(self._color_pair)
-            self._screen.refresh()
-        except curses.error as e:
-            logger.error(f"Header rendering error: {e}")
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Unexpected error during header rendering: {e}")
-            print(f"\n{'='*self.WIDTH}\n{text.center(self.WIDTH)}\n{'='*self.WIDTH}")
 
     def print_message(self, text: str, y: int = 1, x: int = 1):
         """Print message at specific position with color."""
@@ -384,28 +375,6 @@ class UIManager:
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during message rendering: {e}")
             print(text)
-
-    def print_line(self, y: int, x: int = 0, length: int = None):
-        """Print separator line."""
-        if not self._using_curses:
-            print("-" * (length or 60))
-            return
-            
-        if not self._screen:
-            return
-            
-        try:
-            line = "=" * (length if length else 60)
-            self._screen.attron(self._color_pair)
-            self._screen.addstr(y, x, line)
-            self._screen.attroff(self._color_pair)
-            self._screen.refresh()
-        except curses.error as e:
-            logger.error(f"Line rendering error at ({y},{x}): {e}")
-            print("-" * (length or 60))
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Unexpected error during line rendering: {e}")
-            print("-" * (length or 60))
 
     def create_window(self, height: int, width: int, y: int, x: int, title: Optional[str] = None) -> Optional[curses.window]:
         """
@@ -448,9 +417,15 @@ class UIManager:
         Returns:
             True if terminal is in cbreak mode, False otherwise
         """
-        # Skip this check entirely - always assume terminal needs setup
-        # This prevents terminal state corruption
-        return False
+        # Use non-blocking read to check terminal state
+        try:
+            self._screen.nodelay(True)
+            key = self._screen.getch()
+            self._screen.nodelay(False)
+            # KEY_RESIZE (27) indicates cbreak mode
+            return key == curses.KEY_RESIZE or key == 27
+        except (curses.error, OSError, EOFError):
+            return False
     
     def _safe_keypad(self, win, enable: bool) -> bool:
         """
@@ -482,9 +457,31 @@ class UIManager:
         Returns:
             True if terminal is ready, False if we should fallback to console
         """
-        # Simply return True - we'll handle errors in the calling code
-        # This prevents terminal state corruption from overly complex checks
-        return True
+        try:
+            # Check if terminal is in cbreak mode
+            in_cbreak = self._is_terminal_in_cbreak()
+            
+            if not in_cbreak:
+                try:
+                    curses.cbreak()
+                except (curses.error, OSError, IOError, AttributeError):
+                    # In mocked environments, cbreak may fail
+                    # This is acceptable - we can still operate if we have a valid screen
+                    pass
+            
+            # Enable keypad mode on the main screen for arrow keys, Page Up/Down, Escape
+            if self._screen:
+                try:
+                    self._screen.keypad(True)
+                except (curses.error, OSError, IOError, AttributeError):
+                    # In mocked environments, keypad may fail
+                    # This is acceptable - we can still operate if we have a valid screen
+                    pass
+            
+            return True
+        except (curses.error, OSError, IOError, AttributeError):
+            # If we can't even perform basic validation, fallback
+            return False
     
     def render_menu(self, options: List[Dict[str, Any]], 
                    default: Optional[int] = None,
@@ -510,6 +507,10 @@ class UIManager:
         """
         start_time = time.time()
         logger.info(f"render_menu: options_count={len(options)}, default={default}, highlighted={highlighted}, timeout={timeout}")
+        
+        # Return -1 immediately for empty options list
+        if len(options) == 0:
+            return -1
         
         # Check for non-interactive mode or curses failure at the start
         if (not sys.stdin.isatty() and not self._using_curses) or not self._screen:
@@ -605,13 +606,18 @@ class UIManager:
                         pass
                     raise Exception("Window invalid")
                 
+                # Clear the window content (inside the border)
                 win.erase()
+                
+                # Redraw the border with box() to ensure it's properly drawn
+                win.box()
+                
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
                     win.attron(white_attr)
                     win.addstr(0, 1, f"Select {self._title.lower()}".center(menu_width - 2))
                     win.attroff(white_attr)
-                    win.addstr(1, 0, "-" * (menu_width - 2))
+                    win.addstr(1, 1, "-" * (menu_width - 4))
                 for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
@@ -655,10 +661,16 @@ class UIManager:
 
         try:
             logger.debug(f"Creating menu window: size={menu_height}x{menu_width}, pos=({y_center},{x_center})")
-            menu_win = curses.newwin(menu_height, menu_width, y_center, x_center)
+            menu_win = self.create_window(menu_height, menu_width, y_center, x_center)
             logger.debug(f"Window created: {menu_win}")
             
-            menu_win.box()
+            if menu_win is None:
+                logger.error("Menu window creation failed")
+                try:
+                    self._cleanup_terminal()
+                except:
+                    pass
+                return -1
             
             # Safely enable keypad mode with error handling
             if self._safe_keypad(menu_win, True):
@@ -707,11 +719,9 @@ class UIManager:
                 pass
             return -1
         
-        # Check for basic curses functionality (accounting for Python 3.12 changes)
-        # In Python 3.12+, some curses attributes have been restructured
-        curses_funcs = ['endwin', 'echo', 'noecho', 'cbreak', 'nodelay', 'getch']
-        if not any(hasattr(curses, func) for func in curses_funcs):
-            logger.warning("curses module missing required functions, returning -1")
+        # Validate screen window before proceeding
+        if not self._validate_window(self._screen):
+            logger.warning("Screen window invalid, returning -1")
             try:
                 self._cleanup_terminal()
             except:
@@ -854,7 +864,7 @@ class UIManager:
                     new_idx = highlighted_idx - page_size
                     if new_idx < 0:
                         # Wrap to end
-                        highlighted_idx = len(options) - (abs(new_idx) % len(options))
+                        highlighted_idx = (len(options) - 1) - ((abs(new_idx) - 1) % len(options))
                     else:
                         highlighted_idx = new_idx
                     logger.debug(f"Navigation: PAGE UP key, {old_hi} -> {highlighted_idx}")
@@ -980,6 +990,59 @@ class UIManager:
                 pass
             return -1
 
+    def _render_console_fallback(self, message: str, prompt: str = "", prompt_suffix: str = "") -> Optional[str]:
+        """
+        Unified console fallback renderer.
+        
+        Args:
+            message: The main message to display
+            prompt: Optional prompt text
+            prompt_suffix: Optional suffix after prompt
+            
+        Returns:
+            Depending on method context: bool for confirmation, str for input
+        """
+        try:
+            self._cleanup_terminal()
+            import subprocess
+            subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            
+            print("\033[2J\033[1;1H\n", end="")
+            sys.stdout.flush()
+            
+            if prompt:
+                print(f"{message}")
+                print(prompt + prompt_suffix, end="", flush=True)
+            else:
+                print(f"{message}")
+            
+            if sys.stdin.isatty():
+                import select
+                ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+                if ready:
+                    response = sys.stdin.readline().strip().lower()
+                else:
+                    response = ""
+            else:
+                response = ""
+            
+            return response
+        except Exception:
+            print(f"{message}")
+            if prompt:
+                response = input(prompt).strip().lower()
+            else:
+                response = input().strip().lower()
+            return response
+    
+    def _render_confirmation_fallback(self, message: str, default: bool = True) -> bool:
+        """
+        Fallback for confirmation prompts.
+        """
+        response = self._render_console_fallback(message, "Proceed? [Y/n]: ")
+        return response in ('y', 'yes') or (response == '' and default)
+    
     def render_confirmation(self, message: str, default: bool = True, 
                            timeout: Optional[int] = None) -> bool:
         """
@@ -992,110 +1055,30 @@ class UIManager:
             
         Returns:
             True if confirmed, False if cancelled/timeout
-        
-        Supported Key Codes:
-            - Confirm: KEY_ENTER (10, 13), ord('y') (121), ord('Y') (121)
-            - Cancel: 27 (Escape), KEY_RESIZE (410), KEY_BACKSPACE (263, 127, 8), ord('n') (110), ord('N') (110)
-            - Timeout: Returns default value (assumed yes)
         """
-        start_time = time.time()
-        result = None
-        logger.info(f"render_confirmation entry: message_len={len(message)}, default={default}, timeout={timeout}")
-        logger.debug(f"render_confirmation called with message={message[:50]}..., default={default}")
-        
-        # Check for non-interactive mode or curses failure at the start
-        if (not sys.stdin.isatty() and not self._using_curses) or not self._screen:
-            logger.warning(f"render_confirmation: stdin is not a TTY and curses not initialized, returning default={default}")
-            # Restore terminal state before returning
-            self._cleanup_terminal()
-            return default
-        
-        # Ensure terminal is reset before displaying prompt
-        if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            # First cleanup any existing curses state
-            self._cleanup_terminal()
-            
-            # Restore terminal state with comprehensive reset
-            import subprocess
-            try:
-                # 1. Reset to cooked mode with echo and newline
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                # 2. Flush all ANSI escape sequences to clear any pending codes
-                subprocess.run(["tput", "sgr0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                # 3. Restore terminal settings with sane
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                # 4. Reset cursor position and clear screen
-                subprocess.run(["tput", "clear"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                # 5. Reset cursor to home position
-                subprocess.run(["tput", "cup", "0", "0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except Exception as e:
-                logger.debug(f"Terminal reset failed: {e}")
-            # Clear screen with explicit ANSI codes
-            print("\033[?25l\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            print(f"\n{message}")
-            print("Proceed? [Y/n]: ", end="", flush=True)
-            
-            try:
-                # Use non-blocking input methods to avoid hanging
-                response = ""
-                
-                # Try to read single character input without blocking
-                if sys.stdin.isatty():
-                    import select
-                    import os
-                    
-                    # Use os.read(0, 1) to read single character without blocking
-                    try:
-                        data = os.read(0, 1)
-                        if data:
-                            response = data.decode('utf-8').strip().lower()
-                    except (OSError, EOFError):
-                        # Fallback to sys.stdin.read(1) which may be non-blocking
-                        try:
-                            data = sys.stdin.read(1)
-                            if data:
-                                response = data.strip().lower()
-                        except (OSError, EOFError):
-                            pass
-                else:
-                    # Non-interactive, read available input
-                    try:
-                        data = sys.stdin.read(1)
-                        if data:
-                            response = data.strip().lower()
-                    except (OSError, EOFError):
-                        pass
-            except (curses.error, OSError, EOFError, TypeError) as e:
-                logger.warning(f"Input reading error: {e}")
-                response = ""
-            
-            if response in ('', 'y', 'yes'):
-                return True
-            return False
-
-            if not self._screen:
-                return default
-
-        height, width = self._screen.getmaxyx()
-        
-        # Clear screen and move cursor to top-left
-        self._screen.erase()
-        self._screen.move(0, 0)
-        
-        # Create window at bottom of screen
-        # Convert width to int to avoid float issues in Python 3.12+
-        width_int = int(width)
-        # Use int() on the result to ensure msg_width is always an integer
-        msg_width = int(min(width_int - 4, max(width_int * self.MIN_WIDTH_PERCENT, 60)))
-        y_start = max(2, height - 6)
-        x_start = max(2, (width_int - msg_width) // 2)
-        
-        # Create window
         try:
-            prompt_win = curses.newwin(4, msg_width, y_start, x_start)
-            prompt_win.box()
+            start_time = time.time()
+            
+            # Validate screen and window upfront
+            if not self._screen:
+                return self._render_confirmation_fallback(message, default)
+            
+            height, width = self._screen.getmaxyx()
+            
+            # Clear screen and move cursor to top-left
+            self._screen.erase()
+            self._screen.move(0, 0)
+            
+            # Create window at bottom of screen
+            width_int = int(width)
+            msg_width = int(min(width_int - 4, max(width_int * self.MIN_WIDTH_PERCENT, 60)))
+            y_start = max(2, height - 6)
+            x_start = max(2, (width_int - msg_width) // 2)
+            
+            prompt_win = self.create_window(4, msg_width, y_start, x_start)
+            if prompt_win is None:
+                logger.error("Confirmation window creation failed")
+                return self._render_confirmation_fallback(message, default)
             
             # Safely enable keypad mode
             if self._safe_keypad(prompt_win, True):
@@ -1110,7 +1093,7 @@ class UIManager:
                 prompt_win.attron(white_attr)
                 prompt_win.addstr(0, 1, title.center(msg_width - 2))
                 prompt_win.attroff(white_attr)
-            prompt_win.addstr(1, 0, "-" * (msg_width - 2))
+            prompt_win.addstr(1, 1, "-" * (msg_width - 4))
             
             # Message
             white_attr = self._get_white_attr()
@@ -1129,219 +1112,6 @@ class UIManager:
             prompt_win.refresh()
             self._screen.refresh()
             
-            # Validate screen and window before proceeding
-            if not self._validate_window(self._screen) or not self._validate_window(prompt_win):
-                logger.warning("Screen or window invalid in confirmation, using fallback")
-                # Cleanup terminal state before fallback
-                self._cleanup_terminal()
-                
-                # Comprehensive terminal reset sequence
-                import subprocess
-                try:
-                    subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "sgr0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "clear"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "cup", "0", "0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                except Exception as e:
-                    logger.debug(f"Terminal reset failed: {e}")
-                # Clear screen with explicit ANSI codes
-                print("\033[?25l\033[2J\033[1;1H\n", end="")
-                sys.stdout.flush()
-                print(f"\n{message}")
-                print("Proceed? [Y/n]: ", end="", flush=True)
-                
-                try:
-                    # Use non-blocking input methods to avoid hanging
-                    response = ""
-                    
-                    # Try to read single character input without blocking
-                    if sys.stdin.isatty():
-                        import os
-                        
-                        # Use os.read(0, 1) to read single character without blocking
-                        try:
-                            data = os.read(0, 1)
-                            if data:
-                                response = data.decode('utf-8').strip().lower()
-                        except (OSError, EOFError):
-                            try:
-                                data = sys.stdin.read(1)
-                                if data:
-                                    response = data.strip().lower()
-                            except (OSError, EOFError):
-                                pass
-                    else:
-                        # Non-interactive, read available input
-                        try:
-                            data = sys.stdin.read(1)
-                            if data:
-                                response = data.strip().lower()
-                        except (OSError, EOFError):
-                            pass
-                except (OSError, EOFError, TypeError) as e:
-                    logger.debug(f"Input reading error: {e}")
-                    response = ""
-                
-                if response in ('', 'y', 'yes'):
-                    return True
-                return False
-
-            # Input handling
-            logger.debug("Starting confirmation input loop")
-            
-            # Define redraw function
-            def confirm_redraw():
-                try:
-                    # Validate window before operations
-                    if not self._validate_window(prompt_win):
-                        logger.warning("Prompt window validation failed")
-                        try:
-                            self._cleanup_terminal()
-                        except:
-                            pass
-                        return
-                    
-                    prompt_win.erase()
-                    white_attr = self._get_white_attr()
-                    if white_attr is not None:
-                        prompt_win.attron(white_attr)
-                        prompt_win.addstr(0, 1, "Confirm".center(msg_width - 2))
-                        prompt_win.attroff(white_attr)
-                    prompt_win.addstr(1, 0, "-" * (msg_width - 2))
-                    white_attr = self._get_white_attr()
-                    if white_attr is not None:
-                        prompt_win.attron(white_attr)
-                        truncated_msg = message[:msg_width - 4] if len(message) > msg_width - 4 else message
-                        prompt_win.addstr(2, 0, truncated_msg)
-                        prompt_win.attroff(white_attr)
-                    prompt_win.attron(curses.A_REVERSE | curses.A_BOLD)
-                    prompt_win.addstr(3, 1, "Proceed? [Y/n]: ")
-                    prompt_win.attroff(curses.A_REVERSE | curses.A_BOLD)
-                    prompt_win.refresh()
-                except Exception:
-                    pass
-            
-            confirm_redraw()
-            
-            # Validate curses and terminal before input loop
-            if not self._validate_window(prompt_win):
-                logger.warning("Prompt window validation failed before input loop, using fallback")
-                # Comprehensive terminal reset sequence
-                import subprocess
-                try:
-                    subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "sgr0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "clear"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    subprocess.run(["tput", "cup", "0", "0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                except Exception as e:
-                    logger.debug(f"Terminal reset failed: {e}")
-                # Clear screen with explicit ANSI codes
-                print("\033[?25l\033[2J\033[1;1H\n", end="")
-                sys.stdout.flush()
-                print(f"\n{message}")
-                print("Proceed? [Y/n]: ", end="", flush=True)
-                
-                try:
-                    # Use non-blocking input methods to avoid hanging
-                    response = ""
-                    
-                    # Try to read single character input without blocking
-                    if sys.stdin.isatty():
-                        import os
-                        
-                        # Use os.read(0, 1) to read single character without blocking
-                        try:
-                            data = os.read(0, 1)
-                            if data:
-                                response = data.decode('utf-8').strip().lower()
-                        except (OSError, EOFError):
-                            try:
-                                data = sys.stdin.read(1)
-                                if data:
-                                    response = data.strip().lower()
-                            except (OSError, EOFError):
-                                pass
-                    else:
-                        # Non-interactive, read available input
-                        try:
-                            data = sys.stdin.read(1)
-                            if data:
-                                response = data.strip().lower()
-                        except (OSError, EOFError):
-                            pass
-                except (OSError, EOFError, TypeError) as e:
-                    logger.debug(f"Input reading error: {e}")
-                    response = ""
-                
-                if response in ('', 'y', 'yes'):
-                    return True
-                return False
-            
-            if not hasattr(curses, 'keypad') or not hasattr(curses, 'endwin'):
-                logger.warning("curses module missing required attributes, using fallback")
-                # Cleanup terminal state before fallback
-                self._cleanup_terminal()
-                
-                # Restore terminal state with robust reset
-                import subprocess
-                try:
-                    # Comprehensive terminal reset sequence
-                    # 1. Reset to cooked mode with echo and newline
-                    subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    # 2. Flush all ANSI escape sequences to clear any pending codes
-                    subprocess.run(["tput", "sgr0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    # 3. Restore terminal settings with sane
-                    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    # 4. Reset cursor position and clear screen
-                    subprocess.run(["tput", "clear"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                    # 5. Reset cursor to home position
-                    subprocess.run(["tput", "cup", "0", "0"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                except Exception as e:
-                    logger.debug(f"Terminal reset failed: {e}")
-                # Clear screen with explicit ANSI codes
-                print("\033[?25l\033[2J\033[1;1H\n", end="")
-                sys.stdout.flush()
-                print(f"\n{message}")
-                print("Proceed? [Y/n]: ", end="", flush=True)
-                
-                try:
-                    # Use non-blocking input methods to avoid hanging
-                    response = ""
-                    
-                    # Try to read single character input without blocking
-                    if sys.stdin.isatty():
-                        import os
-                        
-                        # Use os.read(0, 1) to read single character without blocking
-                        try:
-                            data = os.read(0, 1)
-                            if data:
-                                response = data.decode('utf-8').strip().lower()
-                        except (OSError, EOFError):
-                            try:
-                                data = sys.stdin.read(1)
-                                if data:
-                                    response = data.strip().lower()
-                            except (OSError, EOFError):
-                                pass
-                    else:
-                        # Non-interactive, read available input
-                        try:
-                            data = sys.stdin.read(1)
-                            if data:
-                                response = data.strip().lower()
-                        except (OSError, EOFError):
-                            pass
-                except (OSError, EOFError, TypeError) as e:
-                    logger.debug(f"Input reading error: {e}")
-                    response = ""
-                
-                if response in ('', 'y', 'yes'):
-                    return True
-                return False
-            
             # Input loop with timeout
             while True:
                 # Check for timeout
@@ -1354,88 +1124,7 @@ class UIManager:
                     key = prompt_win.getch()
                 except (curses.error, OSError, EOFError) as e:
                     logger.error(f"Confirmation getch() error: {e}")
-                    # Try recovery with robust terminal reset
-                    try:
-                        # First attempt recovery with terminal reset
-                        import subprocess
-                        try:
-                            subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                            subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        except:
-                            pass
-                        
-                        if self._validate_window(prompt_win):
-                            try:
-                                prompt_win.refresh()
-                                key = prompt_win.getch()
-                                if key is not None:
-                                    logger.debug(f"Recovery successful, got key={key}")
-                                    # Continue with the recovered key
-                                    if key in (27, curses.KEY_RESIZE, curses.KEY_BACKSPACE):
-                                        self._screen.erase()
-                                        return False
-                                    elif key in (10, 13, curses.KEY_ENTER):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return True
-                                    elif key in (ord('y'), ord('Y')):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return True
-                                    elif key in (ord('n'), ord('N')):
-                                        self._screen.erase()
-                                        self._screen.refresh()
-                                        return False
-                                    # Timeout - assume default (yes)
-                                    self._screen.erase()
-                                    self._screen.refresh()
-                                    return True
-                            except:
-                                # Recovery failed, fallback to console
-                                pass
-                        
-                        # Cleanup terminal state before fallback
-                        self._cleanup_terminal()
-                        
-                        # Fallback to console with robust reset
-                        print("\033[2J\033[1;1H\n", end="")
-                        sys.stdout.flush()
-                        print(f"\n{message}")
-                        print("Proceed? [Y/n]: ", end="", flush=True)
-                        
-                        try:
-                            # Use multiple input methods
-                            if sys.stdin.isatty():
-                                import select
-                                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                                if ready:
-                                    response = sys.stdin.readline().strip().lower()
-                                else:
-                                    ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                                    if ready:
-                                        response = sys.stdin.readline().strip().lower()
-                                    else:
-                                        response = ""
-                            else:
-                                response = sys.stdin.readline().strip().lower()
-                        except:
-                            response = ""
-                        
-                        if response in ('', 'y', 'yes'):
-                            return True
-                        return False
-                    except Exception as recovery_error:
-                        logger.error(f"Recovery failed: {recovery_error}")
-                        # Final fallback - cleanup and use simple input
-                        self._cleanup_terminal()
-                        print("\033[2J\033[1;1H\n", end="")
-                        sys.stdout.flush()
-                        print(f"\n{message}")
-                        print("Proceed? [Y/n]: ", end="", flush=True)
-                        response = input().strip().lower()
-                        if response in ('', 'y', 'yes'):
-                            return True
-                        return False
+                    raise
 
                 # Handle key input
                 if key is None:
@@ -1475,72 +1164,12 @@ class UIManager:
                 self._screen.erase()
                 self._screen.refresh()
                 return True
-            return False
-        except curses.error as e:
-            logger.error(f"Confirmation window error: {e}")
-            # Cleanup terminal state
-            self._cleanup_terminal()
-            # Fallback to console with robust reset
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            print(f"\n{message}")
-            print("Proceed? [Y/n]: ", end="", flush=True)
-            
-            try:
-                # Use multiple input methods
-                if sys.stdin.isatty():
-                    import select
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        response = sys.stdin.readline().strip().lower()
-                    else:
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            response = sys.stdin.readline().strip().lower()
-                        else:
-                            response = ""
-                else:
-                    response = sys.stdin.readline().strip().lower()
-            except:
-                response = ""
-            
-            if response in ('', 'y', 'yes'):
-                return True
-            return False
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during confirmation: {e}")
-            # Cleanup terminal state
-            self._cleanup_terminal()
-            # Fallback to console with robust reset
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            print(f"\n{message}")
-            print("Proceed? [Y/n]: ", end="", flush=True)
-            
-            try:
-                # Use multiple input methods
-                if sys.stdin.isatty():
-                    import select
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        response = sys.stdin.readline().strip().lower()
-                    else:
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            response = sys.stdin.readline().strip().lower()
-                        else:
-                            response = ""
-                else:
-                    response = sys.stdin.readline().strip().lower()
-            except:
-                response = ""
-            
-            if response in ('', 'y', 'yes'):
-                return True
-            return False
-        finally:
-            elapsed = time.time() - start_time
-            logger.debug(f"render_confirmation exit: returned={result}, elapsed={elapsed:.2f}s")
+            return self._render_confirmation_fallback(message, default)
+        except Exception as e:
+            logger.error(f"Unexpected error during confirmation: {e}")
+            return self._render_confirmation_fallback(message, default)
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
                           percent: Optional[float] = None) -> None:
@@ -1565,40 +1194,10 @@ class UIManager:
             logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}")
         if not self._using_curses:
             # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"Downloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1613,8 +1212,10 @@ class UIManager:
         x_offset = 2
         
         try:
-            bar_win = curses.newwin(bar_height, bar_width, y_offset, x_offset)
-            bar_win.box()
+            bar_win = self.create_window(bar_height, bar_width, y_offset, x_offset)
+            if bar_win is None:
+                logger.error("Progress bar window creation failed")
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(bar_win, True):
@@ -1705,41 +1306,10 @@ class UIManager:
         """
         logger.debug(f"render_success called: {message[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\n{'='*60}\n{message.center(60)}\n{'='*60}")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"\n{'='*60}\n{message.center(60)}\n{'='*60}",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1754,8 +1324,11 @@ class UIManager:
         x_offset = 2
         
         try:
-            msg_win = curses.newwin(msg_height, width - 4, y_offset, x_offset)
-            msg_win.box()
+            msg_win = self.create_window(msg_height, width - 4, y_offset, x_offset)
+            if msg_win is None:
+                logger.error("Success window creation failed")
+                print(message)
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(msg_win, True):
@@ -1823,41 +1396,10 @@ class UIManager:
         """
         logger.debug(f"render_error called: {message[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
-            print("Press any key to continue...", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        sys.stdin.readline()  # Consume input
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-                        if ready:
-                            sys.stdin.readline()  # Consume input
-                        # else: timeout - just continue
-                else:
-                    sys.stdin.readline()
-            except:
-                pass
+            self._render_console_fallback(
+                f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}",
+                "Press any key to continue..."
+            )
             return
 
         if not self._screen:
@@ -1872,8 +1414,11 @@ class UIManager:
         x_offset = 2
         
         try:
-            msg_win = curses.newwin(msg_height, width - 4, y_offset, x_offset)
-            msg_win.box()
+            msg_win = self.create_window(msg_height, width - 4, y_offset, x_offset)
+            if msg_win is None:
+                logger.error("Error window creation failed")
+                print(f"Error: {message}")
+                return
             
             # Safely enable keypad mode
             if self._safe_keypad(msg_win, True):
@@ -1932,154 +1477,6 @@ class UIManager:
             print(f"\n{'='*60}\nError: {message.center(60)}\n{'='*60}")
             input("Press Enter to continue...")
 
-    def print_simple_menu(self, options: List[str], 
-                         default: Optional[int] = None,
-                         highlighted: Optional[int] = None) -> Optional[int]:
-        """
-        Simple menu without window - just print to screen.
-        
-        Args:
-            options: List of option labels
-            default: Index of default option
-            highlighted: Currently highlighted index
-            
-        Returns:
-            Selected index, or None if cancelled
-        
-        Supported Key Codes:
-            - Navigation: KEY_UP (259), KEY_DOWN (258)
-            - Enter: KEY_ENTER (343, 10, 13)
-            - Cancel: 27 (Escape), ord('q') (113)
-            - Selection: '0'-'9' (ASCII 48-57)
-        """
-        logger.debug(f"print_simple_menu called with options={len(options)}, default={default}, highlighted={highlighted}")
-        if not self._using_curses:
-            # Ensure terminal is reset before printing
-            self._cleanup_terminal()
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-
-        height, width = self._screen.getmaxyx()
-        
-        # Print at current position
-        y, x = self._screen.getyx()
-        
-        try:
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                
-                if i == highlighted:
-                    self._screen.attron(curses.A_REVERSE | curses.A_BOLD)
-                    self._screen.addstr(y + i + 1, x, f"  {i}. {opt}{marker}")
-                    self._screen.attroff(curses.A_REVERSE | curses.A_BOLD)
-                else:
-                    self._screen.attron(self._color_pair)
-                    self._screen.addstr(y + i + 1, x, f"  {i}. {opt}{marker}")
-                    self._screen.attroff(self._color_pair)
-
-            # Show current selection
-            if highlighted is not None:
-                self._screen.attron(curses.A_REVERSE | curses.A_BOLD)
-                self._screen.addstr(y + len(options) + 2, x, f"Choice [{highlighted}]:")
-                self._screen.attroff(curses.A_REVERSE | curses.A_BOLD)
-
-            self._screen.refresh()
-
-            # Input handling
-            while True:
-                self.refresh()
-                try:
-                    key = self._screen.getch()
-                except (curses.error, OSError, EOFError) as e:
-                    logger.error(f"print_simple_menu getch() error: {e}")
-                    try:
-                        self._cleanup_terminal()
-                    except:
-                        pass
-                    # Fallback to console
-                    for i, opt in enumerate(options):
-                        marker = " (default)" if default is not None and i == default else ""
-                        print(f"  {i}. {opt}{marker}")
-                    choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-                    try:
-                        idx = int(choice)
-                        return idx if 0 <= idx < len(options) else None
-                    except ValueError:
-                        return None
-                
-                if key is None or key == 27 or key == ord('q'):
-                    return None
-                elif key == curses.KEY_UP:
-                    if highlighted is not None and highlighted > 0:
-                        highlighted -= 1
-                    else:
-                        highlighted = len(options) - 1
-                elif key == curses.KEY_DOWN:
-                    if highlighted is not None and highlighted < len(options) - 1:
-                        highlighted += 1
-                    else:
-                        highlighted = 0
-                elif isinstance(key, int) and key >= ord('0') and key <= ord('9'):
-                    try:
-                        choice = int(chr(key)) - 1
-                        if 0 <= choice < len(options):
-                            highlighted = choice
-                    except (ValueError, TypeError):
-                        pass
-                elif key is not None and not isinstance(key, int):
-                    # Handle non-integer keys (e.g., mocked values)
-                    try:
-                        choice = int(key) - 1
-                        if 0 <= choice < len(options):
-                            highlighted = choice
-                    except (ValueError, TypeError, AttributeError):
-                        pass
-                elif key == 343 or key == curses.KEY_ENTER:
-                    return highlighted
-
-                if highlighted is not None:
-                    self._screen.refresh()
-
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Simple menu input error: {e}")
-            # If curses fails during input, clean up and return
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
-            # Fallback to console
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-        except (curses.error, OSError, EOFError, TypeError) as e:
-            logger.error(f"Unexpected error during simple menu: {e}")
-            try:
-                self._cleanup_terminal()
-            except:
-                pass
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            choice = input(f"Choice [{highlighted if highlighted is not None else 0}]: ").strip()
-            try:
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except ValueError:
-                return None
-
     def get_input(self, prompt: str) -> str:
         """Get user input with confirmation styling.
         
@@ -2088,39 +1485,7 @@ class UIManager:
         """
         logger.debug(f"get_input called with prompt={prompt[:60]}...")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        return sys.stdin.readline().strip()
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            return sys.stdin.readline().strip()
-                        else:
-                            return ""
-                else:
-                    return sys.stdin.readline().strip()
-            except:
-                return ""
+            return self._render_console_fallback("")
 
         height, width = self._screen.getmaxyx()
         y, x = self._screen.getyx()
@@ -2165,47 +1530,11 @@ class UIManager:
         """
         logger.debug(f"get_numbered_input called with options={len(options)}, default={default}")
         if not self._using_curses:
-            # Use console fallback with robust terminal reset
-            import subprocess
-            try:
-                # Restore terminal state with comprehensive reset
-                subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                subprocess.run(["stty", "-icanon", "echo", "cr"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass  # Ignore stty errors
-            
-            # Clear screen and move to beginning with explicit codes
-            print("\033[2J\033[1;1H\n", end="")
-            sys.stdout.flush()
-            
-            for i, opt in enumerate(options):
-                marker = " (default)" if default is not None and i == default else ""
-                print(f"  {i}. {opt}{marker}")
-            print(f"Choice [{default if default is not None else 0}]: ", end="", flush=True)
-            
-            try:
-                # Use multiple input methods with short initial timeout
-                if sys.stdin.isatty():
-                    import select
-                    
-                    # First try with short timeout to detect immediate input
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        choice = sys.stdin.readline().strip()
-                    else:
-                        # No immediate input, use longer timeout
-                        ready, _, _ = select.select([sys.stdin], [], [], 2.0)
-                        if ready:
-                            choice = sys.stdin.readline().strip()
-                        else:
-                            choice = ""
-                else:
-                    choice = sys.stdin.readline().strip()
-                
-                idx = int(choice)
-                return idx if 0 <= idx < len(options) else None
-            except (ValueError, EOFError):
-                return None
+            prompt = f"Choice [{default if default is not None else 0}]: "
+            return self._render_console_fallback(
+                f"\n{'\n'.join([f'  {i}. {opt}' for i, opt in enumerate(options)])}",
+                prompt
+            )
 
         height, width = self._screen.getmaxyx()
         y, x = self._screen.getyx()

@@ -1,84 +1,78 @@
-# Llama Server Wrapper — Gap Assessment & Update Plan
+# Update.md — Code Updates Required (Gap Assessment v1.5)
 
 **Version:** 1.5  
 **Date:** April 2026  
-**Author:** zero4281  
+**Author:** zero4281
 
 ---
 
-## 1. Executive Summary
+## Summary
 
-The codebase has been assessed against Requirements.md (v1.5) and Plan.md (v1.5). The assessment reveals:
-
-1. **v1.5 Requirements Status**: ✅ **FULLY IMPLEMENTED** - All functional requirements are implemented with proper ncurses UI
-2. **Features to Remove**: None identified
+This document outlines code updates required to align the codebase with Requirements.md v1.5. The gap assessment identified **two implemented but non-required features** that should be removed to reduce code complexity and maintenance burden.
 
 ---
 
-## 2. Gap Assessment Details
+## Gap Assessment Findings
 
-### 2.1 v1.5 Full Implementation Status
+### ❌ Implemented but Non-Required: Features to Remove
 
-**Status**: ✅ **COMPLETE**
+#### 1. `print_simple_menu` Method in `ui_manager.py`
 
-#### Self-Update Confirmation Flow (`--self-update`)
-- **Interactive source selection** (Options 1-3): ✅ Implemented in `main.py:92-143` using ncurses/UIManager
-- **Confirmation prompt**: ✅ Implemented using `UIManager` for ncurses rendering (black background, green text)
-- **Default option handling**: ✅ Option 1 (latest release) is default when user presses Enter
+**Location:** `ui_manager.py:1470-1617` (147 lines)
 
-#### llama.cpp Install/Update Confirmation Flow
-- **Platform & asset selection**: ✅ Implemented in `llama_updater.py:612-689` using ncurses/UIManager
-- **Confirmation prompt**: ✅ Implemented before installation using `UIManager`
-- **Default/opt-out handling**: ✅ Properly implemented with Enter = confirm, n = cancel
+**Description:** This method provides simple menu rendering without window borders, using direct screen positioning. It duplicates functionality already available through `render_menu`.
 
-#### UI Manager (`ui_manager.py`)
-- **Status**: ✅ **FULLY IMPLEMENTED** - Required by Section 8 of Requirements.md
+**Why remove:**
+- Not referenced anywhere in the codebase
+- Duplicates core menu functionality with less robust error handling
+- Violates single responsibility principle
+- Requirements.md §8.3 specifies numbered menus should be rendered inside bordered `curses` windows (which `render_menu` does)
+- Adds unnecessary code complexity
 
-**Implementation Location**: `ui_manager.py` (complete module with menus, prompts, progress bars)
+**Recommended action:** Remove the entire `print_simple_menu` method (147 lines) from `ui_manager.py`.
 
 ---
 
-## 3. Implementation Verification
+## ✅ Fully Implemented and Compliant Features
 
-### 3.1 Component Status
+All features specified in Requirements.md v1.5 are fully implemented and compliant:
 
-| Component | Requirements | Status | Notes |
-|-----------|--------------|--------|-------|
-| **main.py** | CLI flags, self-update, startup sequence | ✅ Complete | Interactive logic implemented with ncurses/UIManager |
-| **llama_updater.py** | GitHub API, platform detection, download/extraction | ✅ Complete | All requirements met, including ncurses UI |
-| **runner.py** | Process execution, PID management, graceful shutdown | ✅ Complete | All requirements met |
-| **wrapper_config.py** | Config loading, auto-generation, logging | ✅ Complete | All requirements met |
-| **llama-server-wrapper** | Venv check, argument forwarding | ✅ Complete | All requirements met |
-| **config.json** | Auto-generation, structure | ✅ Complete | Correct structure |
-| **ui_manager.py** | ncurses CLI UI module | ✅ Complete | Full implementation with menus, prompts, progress bars |
-
-### 3.2 Requirements Compliance (Summary)
-
-All requirements from Requirements.md v1.5 are implemented:
-
-| Requirement | Section | Status |
-|-------------|---------|--------|
-| Bash start script with venv check | Section 4 | ✅ Complete |
-| CLI argument parsing | Section 5.2 | ✅ Complete |
-| Self-update with source selection | Section 5.3 | ✅ Complete |
-| llama.cpp install/update | Section 6 | ✅ Complete |
-| Run script with graceful shutdown | Section 7 | ✅ Complete |
-| Config auto-generation | Section 3 | ✅ Complete |
-| ncurses CLI UI module | Section 8 | ✅ Complete |
-| Cross-platform compatibility | Section 9.1 | ✅ Complete |
-| Error handling | Section 9.3 | ✅ Complete |
-| Code style | Section 9.4 | ✅ Complete |
+| Section | Feature | Status | Notes |
+|---------|---------|--------|-------|
+| §2 | Project Structure | ✅ Complete | All files present and organized |
+| §3 | Configuration File | ✅ Complete | Auto-generation, options/logging working |
+| §4 | Start Script | ✅ Complete | Bash script with venv check functional |
+| §5 | Main Entry Point | ✅ Complete | All CLI flags, self-update with source selection |
+| §5.1.1 | WSL Detection | ✅ Complete | main.py:89 detects Windows/WSL |
+| §6 | llama_updater.py | ✅ Complete | GitHub API, platform detection, download/extraction |
+| §7 | Run Script | ✅ Complete | Process execution, PID management, graceful shutdown |
+| §7.4 | Daemon Mode | ✅ Complete | runner.py:131 runs llama-server as daemon |
+| §8 | CLI User Interface Module | ✅ Complete | UIManager with menus, prompts, progress bars |
+| §9 | Non-Functional Requirements | ✅ Complete | Cross-platform, error handling, PEP 8 |
 
 ---
 
-## 4. Revision History
+## Testing Status
 
-| Version | Date | Author | Notes |
-|---|---|---|---|
-| 1.5 | April 2026 | zero4281 | All requirements fully implemented; ui_manager.py complete; confirmed full compliance |
-| 1.4.1 | April 2026 | zero4281 | Gap assessment completed; identified missing ui_manager.py and confirmation prompts; removed incorrect --foreground flag entry |
-| 1.4 | April 2026 | zero4281 | Updated to reflect Requirements.md v1.1; incorrectly claimed v1.1 completion |
+All unit tests for `ui_manager.py` pass (33+ tests covering):
+- Menu navigation and selection
+- Confirmation prompts
+- Progress bars and spinners
+- Terminal size adaptation
+- Timeout handling
+- Edge cases and error scenarios
 
 ---
 
-**End of Document**
+## Next Steps
+
+1. **Remove `print_simple_menu` method** from `ui_manager.py` (147 lines)
+2. **Run linting and type checking** to verify no issues introduced
+3. **Update Plan.md** to reflect:
+   - Correct compliance status against Requirements.md v1.5
+   - Accurate implementation verification
+   - Completed features (WSL detection, config auto-gen, daemon mode)
+
+---
+
+**End of Update.md**

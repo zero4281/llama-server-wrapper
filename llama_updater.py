@@ -689,9 +689,8 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
         ui_logger.warning("UI manager not using curses, falling back to console for confirmation")
     
     # Confirmation prompt
-    confirmed = ui.render_confirmation(
-        f"Release {release_tag} - {asset_name}"
-    )
+    release_info = f"{release_tag} ({asset_name})"
+    confirmed = ui.render_confirmation(f"Proceed with installation?\n{release_info}")
     
     if not confirmed:
         print("Installation cancelled.")
@@ -815,6 +814,12 @@ class LlamaUpdater:
         from ui_manager import UIManager
         ui = UIManager("llama.cpp")
         selected_tag_idx = ui.render_menu(tag_options, default=1)
+        
+        # Pass ui to install_release for consistent UI management
+        if release is not None and release_tag:
+            install_release(release, release_tag, ui)
+        else:
+            print("Installation cancelled or failed to select a valid release.")
         
         if selected_tag_idx == -1:
             print("Tag selection cancelled.")
