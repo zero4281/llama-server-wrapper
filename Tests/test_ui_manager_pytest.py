@@ -136,7 +136,7 @@ class TestUIManagerPytest:
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = 10  # Enter
 
-                result = ui.render_confirmation("Are you sure?")
+                result = ui.render_confirmation("Are you sure?", "Release 1.0")
                 assert result is True
     
     def test_confirmation_n_cancels(self):
@@ -161,7 +161,7 @@ class TestUIManagerPytest:
 
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = ord('n')
-                result = ui.render_confirmation("Are you sure?")
+                result = ui.render_confirmation("Are you sure?", "Release 1.0")
                 assert result is False
     
     def test_confirmation_y_confirms(self):
@@ -182,7 +182,7 @@ class TestUIManagerPytest:
                 # Mock window validation to return True
                 mock_win._validate_window = MagicMock(return_value=True)
 
-                result = ui.render_confirmation("Are you sure?")
+                result = ui.render_confirmation("Are you sure?", "Release 1.0")
                 assert result is True
 class TestMenuPageJump:
     """Tests for KEY_PPAGE and KEY_NPAGE page jump behavior."""
@@ -407,7 +407,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Timeout always returns True regardless of default parameter
-                result = ui.render_confirmation("Are you sure?", default=False, timeout=0.001)
+                result = ui.render_confirmation("Are you sure?", "Release 1.0", default=False, timeout=0.001)
                 assert result is True, f"Timeout should return True, got {result}"
     
     def test_timeout_independent_of_default(self):
@@ -437,7 +437,7 @@ class TestConfirmationTimeout:
                 with patch.object(mock_win, 'getch') as mock_getch:
                     mock_getch.return_value = None  # Timeout (only if timeout check doesn't trigger first)
                     
-                    result = ui.render_confirmation("Test", default=default_value, timeout=0.001)
+                    result = ui.render_confirmation("Test", "Release 1.0", default=default_value, timeout=0.001)
                     assert result == expected_result, \
                         f"Timeout with default={default_value} should return {expected_result}, got {result}"
 
@@ -463,7 +463,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Timeout always returns True regardless of default parameter
-                result = ui.render_confirmation("Are you sure?", default=False, timeout=0.001)
+                result = ui.render_confirmation("Are you sure?", "Release 1.0", default=False, timeout=0.001)
                 assert result is True, f"Timeout with default=False should return True, got {result}"
 
     def test_confirmation_graceful_fallback_when_screen_is_none(self):
@@ -487,12 +487,12 @@ class TestConfirmationTimeout:
             with patch.object(mock_win, 'getch') as mock_getch:
                 mock_getch.return_value = 10  # Enter
                 
-                result_true = ui.render_confirmation("Are you sure?", default=True)
+                result_true = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
                 assert result_true is True, f"render_confirmation with _screen=None and default=True should return True, got {result_true}"
                 
                 mock_getch.return_value = ord('n')
                 
-                result_false = ui.render_confirmation("Are you sure?", default=False)
+                result_false = ui.render_confirmation("Are you sure?", "Release 1.0", default=False)
                 assert result_false is False, f"render_confirmation with _screen=None and default=False should return False, got {result_false}"
 
     def test_timeout_with_default_false_returns_true(self):
@@ -522,7 +522,7 @@ class TestConfirmationTimeout:
                 mock_getch.return_value = None
                 
                 # Even with default=False, timeout returns True
-                result = ui.render_confirmation("Test message", default=False, timeout=0.001)
+                result = ui.render_confirmation("Test message", "Release 1.0", default=False, timeout=0.001)
                 assert result is True, \
                     f"Timeout with default=False should return True, got {result}"
     
@@ -559,7 +559,7 @@ class TestConfirmationTimeout:
                 with patch.object(mock_win, 'getch') as mock_getch:
                     mock_getch.return_value = None
                     
-                    result = ui.render_confirmation("Test", default=default_value, timeout=0.001)
+                    result = ui.render_confirmation("Test", "Release 1.0", default=default_value, timeout=0.001)
                     assert result == expected_result, \
                         f"Timeout with default={default_value} should return {expected_result}, got {result}"
 

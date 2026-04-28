@@ -690,7 +690,7 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
     
     # Confirmation prompt
     release_info = f"{release_tag} ({asset_name})"
-    confirmed = ui.render_confirmation(f"Proceed with installation?\n{release_info}")
+    confirmed = ui.render_confirmation(f"Proceed with installation?", release_info)
     
     if not confirmed:
         print("Installation cancelled.")

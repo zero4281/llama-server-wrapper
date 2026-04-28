@@ -180,15 +180,15 @@ def test_confirmation():
          patch('sys.stdin.isatty', return_value=False):
         
         mock_win.getch.side_effect = [10, ord('n'), ord('n'), ord('y')]
-        result = ui.render_confirmation("Proceed with installation? [Y/n]::", default=True)
+        result = ui.render_confirmation("Proceed with installation? [Y/n]::", "Release 1.0", default=True)
         assert result is True
         
         mock_win.getch.side_effect = [ord('n')]
-        result = ui.render_confirmation("Proceed? [Y/n]::", default=True)
+        result = ui.render_confirmation("Proceed? [Y/n]::", "Release 1.0", default=True)
         assert result is False
         
         mock_win.getch.side_effect = [ord('y')]
-        result = ui.render_confirmation("Proceed? [Y/n]::", default=False)
+        result = ui.render_confirmation("Proceed? [Y/n]::", "Release 1.0", default=False)
         assert result is True
 
 
@@ -341,7 +341,7 @@ def test_edge_cases():
     with patch.object(mock_win, 'getch') as mock_getch, \
          patch('ui_manager.curses.newwin', return_value=mock_win):
         
-        result = ui.render_confirmation("Test")
+        result = ui.render_confirmation("Test", "Release 1.0")
         assert result is True, "Should confirm on enter even with _screen=None"
 
 
@@ -395,7 +395,7 @@ def test_full_integration_flow():
          patch('sys.stdin.isatty', return_value=False):
         
         mock_win.getch.side_effect = [10]
-        confirmation = ui.render_confirmation("Proceed? [Y/n]::", default=True)
+        confirmation = ui.render_confirmation("Proceed? [Y/n]::", "Release 1.0", default=True)
         assert confirmation is True, f"Confirmation should return True, got {confirmation}"
     
     # Step 3: Progress bar
@@ -500,7 +500,7 @@ def test_timeout_during_confirmation_dialog():
         mock_win.refresh.return_value = None
         mock_win.getch.side_effect = [None]  # Timeout
         mock_newwin.return_value = mock_win
-        result = ui.render_confirmation("Proceed with installation? [Y/n]", default=True)
+        result = ui.render_confirmation("Proceed with installation? [Y/n]", "Release 1.0", default=True)
         assert result is True, f"Timeout with default=True should return True, got {result}"
     
     # Test 2: Timeout with default=False returns True (implementation always defaults to yes)
@@ -519,7 +519,7 @@ def test_timeout_during_confirmation_dialog():
         mock_win2.refresh.return_value = None
         mock_win2.getch.side_effect = [None]  # Timeout
         mock_newwin2.return_value = mock_win2
-        result = ui.render_confirmation("Proceed with update? [Y/n]", default=False)
+        result = ui.render_confirmation("Proceed with update? [Y/n]", "Release 1.0", default=False)
         # Note: The implementation always returns True on timeout, regardless of default
         assert result is True, f"Timeout always returns True, got {result}"
     
@@ -539,8 +539,8 @@ def test_timeout_during_confirmation_dialog():
         mock_win3.refresh.return_value = None
         mock_win3.getch.side_effect = [None, None]  # Two timeouts
         mock_newwin3.return_value = mock_win3
-        result1 = ui.render_confirmation("First? [Y/n]", default=True)
-        result2 = ui.render_confirmation("Second? [Y/n]", default=False)
+        result1 = ui.render_confirmation("First? [Y/n]", "Release 1.0", default=True)
+        result2 = ui.render_confirmation("Second? [Y/n]", "Release 1.0", default=False)
         assert result1 is True and result2 is True, "All timeouts return True"
 
 
@@ -627,7 +627,7 @@ def test_timeout_during_progress_bar_rendering():
          patch('ui_manager.curses.newwin', return_value=mock_win):
         
         mock_getch.side_effect = [None]  # Timeout
-        result = ui.render_confirmation("Test")
+        result = ui.render_confirmation("Test", "Release 1.0")
         assert result is True, "Should handle timeout gracefully with _screen=None"
     
     # Test 4: Timeout during determinate progress bar with different states
