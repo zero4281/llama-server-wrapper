@@ -36,10 +36,10 @@ class TestConfirmationFallback:
         ui = create_fallback_ui()
         
         with patch.object(ui, '_render_confirmation_fallback', return_value=True) as mock_fallback:
-            result = ui.render_confirmation("Are you sure?")
+            result = ui.render_confirmation("Are you sure?", "Release 1.0")
             
-            # Should call fallback
-            mock_fallback.assert_called_once_with("Are you sure?", True)
+            # Should call fallback with message + release_info appended
+            mock_fallback.assert_called_once_with("Are you sure?\nRelease 1.0", True)
             # Should return default (True)
             assert result is True
     
@@ -53,11 +53,11 @@ class TestConfirmationFallback:
         
         with patch.object(ui, '_render_confirmation_fallback', side_effect=mock_fallback_side_effect):
             # With default=True, should return True
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
             
             # With default=False, should return False
-            result = ui.render_confirmation("Are you sure?", default=False)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=False)
             assert result is False
     
     def test_fallback_handles_redirected_stdin(self):
@@ -76,7 +76,7 @@ class TestConfirmationFallback:
             mock_thread_class.return_value = mock_thread
             
             # Should fall back to default behavior
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
     
     def test_fallback_waits_for_input_with_timeout(self):
@@ -102,7 +102,7 @@ class TestConfirmationFallback:
             
             with patch('sys.stdin.read', side_effect=read_side_effect):
                 # Should return True (confirmed)
-                result = ui.render_confirmation("Are you sure?", default=True)
+                result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
                 assert result is True
     
     def test_fallback_returns_default_when_no_input(self):
@@ -125,7 +125,7 @@ class TestConfirmationFallback:
             mock_thread_class.return_value = mock_thread
             
             # Should return default (True)
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
     
     def test_fallback_prints_prompt_when_redirected(self):
@@ -144,7 +144,7 @@ class TestConfirmationFallback:
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
             # Should print the prompt
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             
             # Verify prompt was printed
             assert any("Proceed? [Y/n]" in str(call) for call in mock_print.call_args_list)
@@ -165,7 +165,7 @@ class TestConfirmationFallback:
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
             # Should not raise exception, return default
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
 
 
@@ -187,7 +187,7 @@ class TestConfirmationWithInput:
             mock_thread_class.return_value = mock_thread
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
     
     def test_confirmation_with_yes_uppercase_input(self):
@@ -205,7 +205,7 @@ class TestConfirmationWithInput:
             mock_thread_class.return_value = mock_thread
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
     
     def test_confirmation_with_empty_input(self):
@@ -223,7 +223,7 @@ class TestConfirmationWithInput:
             mock_thread_class.return_value = mock_thread
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
-            result = ui.render_confirmation("Are you sure?", default=True)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=True)
             assert result is True
     
     def test_confirmation_with_no_input(self):
@@ -252,7 +252,7 @@ class TestConfirmationWithInput:
             mock_thread_class.return_value = mock_thread
             mock_time.side_effect = [0, 0.2, 0.5, 1.0]
             
-            result = ui.render_confirmation("Are you sure?", default=False)
+            result = ui.render_confirmation("Are you sure?", "Release 1.0", default=False)
             assert result is False
 
 

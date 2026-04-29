@@ -219,7 +219,7 @@ class TestTimeoutPytest:
                 mock_getch.return_value = None  # Timeout
 
                 # Provide timeout parameter to trigger timeout behavior
-                result = ui.render_confirmation("Test confirmation", default=False, timeout=0.001)
+                result = ui.render_confirmation("Test confirmation", "Release 1.0", default=False, timeout=0.001)
                 assert result is True
 
     def test_screen_none_with_timeout(self):
@@ -233,12 +233,12 @@ class TestTimeoutPytest:
         with patch.object(ui, '_render_confirmation_fallback') as mock_fallback:
             # First call (default=True) should return True
             mock_fallback.return_value = True
-            result_true = ui.render_confirmation("Test confirmation", default=True)
+            result_true = ui.render_confirmation("Test confirmation", "Release 1.0", default=True)
             assert result_true is True
             
             # Second call (default=False) should return False
             mock_fallback.return_value = False
-            result_false = ui.render_confirmation("Test confirmation", default=False)
+            result_false = ui.render_confirmation("Test confirmation", "Release 1.0", default=False)
             assert result_false is False
     
     def test_render_menu_default_false_timeout(self):

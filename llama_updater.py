@@ -604,7 +604,7 @@ def delete_existing_installation() -> None:
     try:
         if LLAMA_CPP_DIR.exists():
             shutil.rmtree(LLAMA_CPP_DIR)
-            print(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
+            ui_logger.debug(f"Deleted existing llama-cpp folder: {LLAMA_CPP_DIR}")
     except Exception as e:
         raise LlamaUpdaterError(f"Failed to delete existing llama-cpp folder: {e}")
 
@@ -690,7 +690,7 @@ def install_release(release: dict, release_tag: str, ui_manager: Optional["UIMan
     
     # Confirmation prompt
     release_info = f"{release_tag} ({asset_name})"
-    confirmed = ui.render_confirmation(f"Proceed with installation?\n{release_info}")
+    confirmed = ui.render_confirmation(f"Proceed with installation?", release_info)
     
     if not confirmed:
         print("Installation cancelled.")
@@ -811,15 +811,8 @@ class LlamaUpdater:
             })
         
         # Use UIManager for tag selection
-        from ui_manager import UIManager
         ui = UIManager("llama.cpp")
         selected_tag_idx = ui.render_menu(tag_options, default=1)
-        
-        # Pass ui to install_release for consistent UI management
-        if release is not None and release_tag:
-            install_release(release, release_tag, ui)
-        else:
-            print("Installation cancelled or failed to select a valid release.")
         
         if selected_tag_idx == -1:
             print("Tag selection cancelled.")
