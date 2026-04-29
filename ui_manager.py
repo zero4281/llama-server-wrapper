@@ -587,7 +587,7 @@ class UIManager:
         menu_width = max(min_width, min(max_label_len + 15, screen_width - 8)) + 2
         
         y_offset = 2
-        x_offset = 2
+        x_offset = 4
         highlighted_idx = highlighted if highlighted is not None else 0
         
         # Calculate centered position
@@ -598,7 +598,7 @@ class UIManager:
         def redraw(win, hi_idx):
             try:
                 logger.debug(f"Redraw called: win={win}, hi_idx={hi_idx}, options_count={len(options)}")
-                #curses.curs_set(0)
+                curses.curs_set(0) # It's possible that this is needed because the cursor is getting displayed as part of a captured error.
                 
                 # Validate window before operations
                 if not self._validate_window(win):
@@ -615,14 +615,14 @@ class UIManager:
                 # Redraw the border with box() to ensure it's properly drawn
                 win.box()
                 
-                box_width = menu_width - 4
+                box_width = menu_width - (x_offset * 2)
                 
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
                     win.attron(white_attr)
                     win.addstr(0, x_offset, f"Select {self._title.lower()}".center(box_width))
                     win.attroff(white_attr)
-                    win.addstr(1, x_offset, "-" * (menu_width - 6))
+                    win.addstr(1, 1, "-" * (menu_width - 2))
                 for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
@@ -1193,13 +1193,13 @@ class UIManager:
                     continue
                 
                 # Handle key input
-                if key == curses.KEY_UP:
+                if key == curses.KEY_DOWN or key ==  curses.KEY_RIGHT:
                     # Move to No option
                     highlighted_idx = 1
                     redraw(highlighted_idx)
                     continue
                 
-                if key == curses.KEY_DOWN:
+                if key == curses.KEY_UP or key ==  curses.KEY_LEFT:
                     # Move to Yes option
                     highlighted_idx = 0
                     redraw(highlighted_idx)
