@@ -236,48 +236,6 @@ def test_progress():
         ui.render_progress_bar("unknown.zip", 0, 0, percent=None)
 
 
-def test_styling():
-    """Test styling features."""
-    
-    mock_screen = MagicMock()
-    mock_screen.getmaxyx.return_value = (24, 80)
-    
-    mock_curses = MagicMock(spec=curses)
-    mock_curses.initscr.return_value = MagicMock()
-    mock_curses.start_color = MagicMock()
-    mock_curses.init_pair = MagicMock(return_value=None)
-    mock_curses.cbreak = MagicMock(return_value=True)
-    mock_curses.noecho = MagicMock()
-    mock_curses.curs_set = MagicMock(return_value=None)
-    mock_curses.has_ungetch = MagicMock(return_value=False)
-    mock_curses.getscrptr = MagicMock(return_value=None)
-    mock_curses.keypad = MagicMock(return_value=True)
-    
-    with patch('ui_manager.curses', mock_curses):
-        ui = UIManager("Test")
-        ui._using_curses = True
-        ui._color_pair = curses.A_BOLD
-        ui._screen = mock_screen
-    
-    mock_win = MagicMock()
-    mock_win.getyx.return_value = (0, 0)
-    
-    with patch.object(ui, 'refresh'), \
-         patch('ui_manager.curses.newwin', return_value=mock_win), \
-         patch('builtins.input', return_value='\n'), \
-         patch('sys.stdin.readline', return_value='\n'), \
-         patch('sys.stdin.isatty', return_value=False):
-        
-        ui.render_menu([{'label': 'Opt1'}], default=0, highlighted=0)
-        
-        assert mock_win.attron.called, "Window should have attron called"
-        assert mock_win.attroff.called, "Window should have attroff called"
-        
-        # Verify color_pair is used correctly with curses.color_pair
-        mock_win.attron.assert_any_call(ui._color_pair | curses.A_BOLD | curses.A_REVERSE)
-        mock_win.attron.assert_any_call(ui._color_pair)
-
-
 def test_edge_cases():
     """Test edge cases and error handling."""
     

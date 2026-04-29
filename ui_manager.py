@@ -531,8 +531,7 @@ class UIManager:
         if not self._using_curses or not self._screen:
             # Reset terminal
             try:
-                curses.curs_set(1)
-                curses.endwin()
+                self._cleanup_terminal()
             except:
                 pass
             
@@ -581,6 +580,7 @@ class UIManager:
         self._screen.refresh()  # Force full screen refresh to clear old content
         screen_height, screen_width = self._screen.getmaxyx()
         menu_height = len(options) + 4
+        
         # Calculate menu width: max label length + padding, but ensure minimum percentage and fit on screen
         max_label_len = max(len(opt.get('label', '')) for opt in options) if options else 20
         min_width = int(screen_width * self.MIN_WIDTH_PERCENT)
@@ -598,6 +598,7 @@ class UIManager:
         def redraw(win, hi_idx):
             try:
                 logger.debug(f"Redraw called: win={win}, hi_idx={hi_idx}, options_count={len(options)}")
+                #curses.curs_set(0)
                 
                 # Validate window before operations
                 if not self._validate_window(win):
@@ -614,12 +615,14 @@ class UIManager:
                 # Redraw the border with box() to ensure it's properly drawn
                 win.box()
                 
+                box_width = menu_width - 4
+                
                 white_attr = self._get_white_attr()
                 if white_attr is not None:
                     win.attron(white_attr)
-                    win.addstr(0, 2, f"Select {self._title.lower()}".center(menu_width - 4))
+                    win.addstr(0, x_offset, f"Select {self._title.lower()}".center(box_width))
                     win.attroff(white_attr)
-                    win.addstr(1, 2, "-" * (menu_width - 6))
+                    win.addstr(1, x_offset, "-" * (menu_width - 6))
                 for i, opt in enumerate(options):
                     label = opt.get('label', '')
                     desc = opt.get('description', '')
@@ -627,19 +630,21 @@ class UIManager:
                     full_label = f"  {i}. {label}{marker}"
                     if i == hi_idx:
                         win.attron(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
-                        win.addstr(i + 2, 2, full_label)
+                        win.addstr(i + 2, x_offset, full_label)
                         if desc:
-                            win.addstr(i + 3, 2, desc)
+                            win.addstr(i + 3, x_offset, desc)
                         win.attroff(self._color_pair | curses.A_BOLD | curses.A_REVERSE)
                     else:
                         win.attron(self._color_pair)
-                        win.addstr(i + 2, 2, full_label)
+                        win.addstr(i + 2, x_offset, full_label)
                         if desc:
-                            win.addstr(i + 3, 2, desc)
+                            win.addstr(i + 3, x_offset, desc)
                         win.attroff(self._color_pair)
                 footer = "Use arrow keys to navigate, type number to select, Enter to confirm, q to cancel"
-                truncated_footer = footer[:menu_width - 4] if len(footer) > menu_width - 4 else footer
-                win.addstr(menu_height - 1, 2, truncated_footer, curses.A_REVERSE)
+                truncated_footer = footer[:box_width] if len(footer) > box_width else footer
+                centered_footer = truncated_footer.center(box_width)
+                win.addstr(menu_height - 1, x_offset, centered_footer, curses.A_REVERSE)
+                
                 win.refresh()
                 logger.debug(f"Redraw completed successfully")
             except curses.error as e:
@@ -952,8 +957,7 @@ class UIManager:
             # Clear screen and fall back to console
             logger.warning(f"Falling back to console mode due to error: {e}")
             try:
-                curses.curs_set(1)
-                curses.endwin()
+                self._cleanup_terminal()
             except:
                 pass
             for i, opt in enumerate(options):
@@ -1068,9 +1072,9 @@ class UIManager:
             
             height, width = self._screen.getmaxyx()
             
-            # Clear screen and move cursor to top-left
+            # Clear screen
             self._screen.erase()
-            self._screen.move(0, 0)
+            self._screen.refresh()  # Force full screen refresh to clear old content
             
             # Create the window
             width_int = int(width)
@@ -1079,12 +1083,15 @@ class UIManager:
             # Calculate centered position
             screen_height, screen_width = self._screen.getmaxyx()
             menu_height = 8
-            # Window width = content width + 6 (2 for border + 4 for internal padding)
-            window_width = msg_width + 6
+            
+            # Calculate menu width: screen_width + padding, but ensure minimum percentage and fit on screen
+            min_width = int(screen_width * self.MIN_WIDTH_PERCENT)
+            menu_width = max(min_width, min(msg_width + 15, screen_width - 8)) + 2
+            
             y_center = max(2, (screen_height - menu_height) // 2)
-            x_center = max(2, (screen_width - window_width) // 2)
+            x_center = max(2, (screen_width - menu_width) // 2)
 
-            prompt_win = self.create_window(menu_height, window_width, y_center, x_center)
+            prompt_win = self.create_window(menu_height, menu_width, y_center, x_center)
             if prompt_win is None:
                 logger.error("Confirmation window creation failed")
                 return self._render_confirmation_fallback(message, default)
@@ -1100,25 +1107,38 @@ class UIManager:
             # Define redraw function for Yes/No menu
             def redraw(hi_idx):
                 try:
-                    # Clear window and redraw border
+                    # Validate window before operations
+                    if not self._validate_window(prompt_win):
+                        logger.warning("Window validation failed in redraw")
+                        try:
+                            self._cleanup_terminal()
+                        except:
+                            pass
+                        raise Exception("Window invalid")
+                    
+                    # Clear the window content (inside the border)
                     prompt_win.erase()
+                    
+                    # Redraw the border with box() to ensure it's properly drawn
                     prompt_win.box()
+                    
+                    box_width = menu_width - 6
                     
                     # Title - row 0, centered with padding
                     if white_attr is not None:
                         prompt_win.attron(white_attr)
-                        prompt_win.addstr(0, 3, "Confirm".center(window_width - 6))
+                        prompt_win.addstr(0, 3, "Confirm".center(box_width))
                         prompt_win.attroff(white_attr)
-                        prompt_win.addstr(1, 1, "-" * (window_width - 2))
+                        prompt_win.addstr(1, 1, "-" * (menu_width - 2))
                     
                     # Message - row 2, centered with padding
-                    truncated_msg = message[:msg_width - 6] if len(message) > msg_width - 6 else message
-                    centered_msg = truncated_msg.center(msg_width - 4)
+                    truncated_msg = message[:box_width] if len(message) > box_width else message
+                    centered_msg = truncated_msg.center(box_width)
                     prompt_win.addstr(2, 3, centered_msg)
                     
                     # Release INfo - row 3, centered with padding
-                    truncated_release_info = release_info[:msg_width - 6] if len(release_info) > msg_width - 6 else release_info
-                    centered_release_info = truncated_release_info.center(msg_width - 4)
+                    truncated_release_info = release_info[:box_width] if len(release_info) > box_width else release_info
+                    centered_release_info = truncated_release_info.center(box_width)
                     prompt_win.addstr(3, 3, centered_release_info)
                     
                     # Yes/No options - row 5, centered with padding
@@ -1128,7 +1148,7 @@ class UIManager:
                     
                     # Center the pair of buttons
                     pair_width = button_width * 2 + button_spacing
-                    button_start_x = 2 + (msg_width - pair_width) // 2
+                    button_start_x = 2 + (menu_width - pair_width) // 2
                     
                     # Render Yes button
                     yes_x = button_start_x
@@ -1146,9 +1166,10 @@ class UIManager:
                     
                     # Footer - row 7, centered with padding
                     footer = "Use arrow keys to navigate, Enter to confirm, q/ESC to cancel"
-                    truncated_footer = footer[:msg_width - 4] if len(footer) > msg_width - 4 else footer
-                    centered_footer = truncated_footer.center(window_width - 5)
-                    prompt_win.addstr(7, 2, centered_footer, curses.A_REVERSE)
+                    truncated_footer = footer[:box_width + 4] if len(footer) > box_width + 4 else footer
+                    centered_footer = truncated_footer.center(box_width)
+                    prompt_win.addstr(7, 3, centered_footer, curses.A_REVERSE)
+                    
                     prompt_win.refresh()
                 except curses.error:
                     pass
