@@ -6,6 +6,7 @@ the appropriate platform/architecture, downloading and extracting
 archives, and managing the llama-cpp installation directory.
 """
 
+import datetime
 import json
 import os
 import re
@@ -813,7 +814,7 @@ class LlamaUpdater:
         
         # Use UIManager for tag selection
         ui = UIManager("llama.cpp")
-        selected_tag_idx = ui.render_menu(tag_options, default=1)
+        selected_tag_idx = ui.render_menu(tag_options, default=1, highlighted=1)
         
         if selected_tag_idx == -1:
             print("Tag selection cancelled.")
