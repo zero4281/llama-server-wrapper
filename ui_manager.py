@@ -1326,6 +1326,7 @@ class UIManager:
             bar_win.addstr(4, 0, "Press any key to continue...", curses.A_REVERSE)
             bar_win.refresh()
             
+            #TODO: The download should not wait for user input.  This can probably just be removed.
             # Wait for key
             if self._validate_window(self._screen):
                 logger.debug("Progress bar: waiting for key press")
@@ -1348,6 +1349,8 @@ class UIManager:
                 logger.warning("Screen invalid in progress bar, using fallback")
                 print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
                 input("Press Enter to continue...")
+        
+        #TODO: The fallback logic should get implemented in _render_progress_bar_fallback().
         except curses.error as e:
             logger.error(f"Progress bar window error: {e}")
             # If curses fails during input, clean up and return

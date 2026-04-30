@@ -438,6 +438,7 @@ def download_file(url: str, output_path: Path) -> Path:
         total = int(response.headers.get('content-length', 0))
         downloaded = 0
 
+        #TODO: This loop needs to be moved into ui_manager.py:UIManager:_render_progress_bar_fallback.  A new loop needs to be implemented here with ui_manager.py:UIManager:render_progress_bar() 
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
