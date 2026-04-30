@@ -146,6 +146,7 @@ class UIManager:
         self._color_pair = None
         self._using_curses = False
         self._initialized = False
+        self._progress_bar_win = None  # Store progress bar window reference
         
         try:
             # Initialize curses
@@ -262,6 +263,13 @@ class UIManager:
     
     def _cleanup_terminal(self):
         """Clean up curses and restore terminal."""
+        # Clean up progress bar window first
+        try:
+            if self._progress_bar_win is not None:
+                self._progress_bar_win = None
+        except:
+            pass
+        
         if self._using_curses and self._screen:
             # Validate screen window before attempting cleanup
             if not self._validate_window(self._screen):
@@ -289,7 +297,10 @@ class UIManager:
 
     def __del__(self):
         """Cleanup curses resources."""
-        self._cleanup_terminal()
+        try:
+            self._cleanup_terminal()
+        except:
+            pass
 
     def refresh(self):
         """Refresh screen."""
@@ -1242,133 +1253,184 @@ class UIManager:
             return self._render_confirmation_fallback(message, default)
 
     def render_progress_bar(self, filename: str, current: int, total: int, 
-                          percent: Optional[float] = None) -> None:
+                          percent: Optional[float] = None,
+                          speed: Optional[float] = None,
+                          estimated_time: Optional[int] = None,
+                          spinner: bool = False) -> None:
         """
-        Render a progress bar for downloads.
+        Render a curses-based progress bar for downloads.
         
         Args:
             filename: Name of file being downloaded
             current: Current bytes downloaded
-            total: Total bytes
+            total: Total bytes (0 for unknown)
             percent: Optional pre-calculated percentage
+            speed: Optional download speed (bytes/sec)
+            estimated_time: Optional estimated time remaining (seconds)
+            spinner: If True, show spinner animation for unknown total
         
         Supported Key Codes:
             - Any key press (all valid curses key codes)
             - Console fallback: Enter (10, 13)
         """
         start_time = time.time()
-        logger.debug(f"render_progress_bar entry: file={Path(filename).name}, current={current:,}, total={total:,}")
+        logger.debug(f"render_progress_bar: file={Path(filename).name}, current={current:,}, total={total:,}")
         if percent is not None:
-            logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}, percent={percent:.1f}%")
-        else:
-            logger.debug(f"render_progress_bar called: file={Path(filename).name}, current={current:,}, total={total:,}")
-        if not self._using_curses:
-            # Use console fallback with robust terminal reset
+            logger.debug(f"render_progress_bar: percent={percent:.1f}%")
+        if speed is not None:
+            logger.debug(f"render_progress_bar: speed={speed:.2f} B/s")
+        if estimated_time is not None:
+            logger.debug(f"render_progress_bar: estimated_time={estimated_time}s")
+        
+        if not self._using_curses or not self._screen:
+            # Use console fallback
             self._render_console_fallback(
                 f"Downloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)",
                 "Press any key to continue..."
             )
             return
 
-        if not self._screen:
-            return
-
         height, width = self._screen.getmaxyx()
         
-        # Create window
+        # Auto-resize: window width adapts to terminal, minimum 60 chars
+        min_width = max(60, width - 12)
+        bar_width = min(min_width, 100)  # Cap at 100 chars
         bar_height = 6
-        bar_width = min(50, width - 10)
-        y_offset = height - bar_height - 2
-        x_offset = 2
         
         try:
-            bar_win = self.create_window(bar_height, bar_width, y_offset, x_offset)
-            if bar_win is None:
-                logger.error("Progress bar window creation failed")
-                return
+            # Calculate estimated time if not provided
+            if estimated_time is None and speed is not None and total > current:
+                remaining = total - current
+                estimated_time = int(remaining / speed) if speed > 0 else 0
+                # Cap at 9999 seconds to avoid excessive display
+                estimated_time = min(estimated_time, 9999)
             
-            # Safely enable keypad mode
-            if self._safe_keypad(bar_win, True):
-                logger.debug("Keypad mode enabled for progress bar")
-            else:
-                logger.warning("Keypad mode failed for progress bar")
+            # Format sizes in human-readable format
+            def format_size(size):
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if size < 1024.0:
+                        return f"{size:.1f} {unit}"
+                    size /= 1024.0
+                return f"{size:.1f} PB"
             
-            # Title
-            title = f"Download: {Path(filename).name}"
-            bar_win.addstr(0, 1, title.center(bar_width - 2))
-            bar_win.addstr(1, 0, "-" * (bar_width - 2))
-            
-            # Calculate bar
-            if total > 0:
-                progress = min(current / total * bar_width, bar_width - 1)
-                filled_bar = "█" * int(progress)
-                remaining_bar = "░" * (bar_width - 1 - int(progress))
+            # Title line with filename and estimated time
+            if estimated_time > 0:
+                # Format time: seconds -> "Xs", minutes -> "Xm Ys", hours -> "Xh Ym Zs"
+                if estimated_time < 60:
+                    time_str = f"{estimated_time}s"
+                elif estimated_time < 3600:
+                    mins = estimated_time // 60
+                    secs = estimated_time % 60
+                    time_str = f"{mins}m {secs}s"
+                else:
+                    hours = estimated_time // 3600
+                    mins = (estimated_time % 3600) // 60
+                    secs = estimated_time % 60
+                    time_str = f"{hours}h {mins}m {secs}s"
                 
-                # Status line
-                status = f"{current:,}/{total:,} bytes ({percent or current/total*100:.1f}% - {current/1024/1024:.1f}MB/{total/1024/1024:.1f}MB)"
+                title_text = f"Download: {Path(filename).name} (ETA: {time_str})"
+                if len(title_text) > bar_width - 4:
+                    title_text = title_text[:bar_width - 8] + "..."
+            else:
+                title_text = f"Download: {Path(filename).name}"
+            
+            # Create or update the progress bar window
+            if self._progress_bar_win is not None:
+                # Update existing window
+                bar_win = self._progress_bar_win
+            else:
+                # Create new window at bottom of screen
+                y_offset = height - bar_height - 1
+                x_offset = 1
+                
+                bar_win = self.create_window(bar_height, bar_width, y_offset, x_offset)
+                if bar_win is None:
+                    logger.error("Progress bar window creation failed")
+                    return
+                
+                # Safely enable keypad mode
+                if self._safe_keypad(bar_win, True):
+                    logger.debug("Keypad mode enabled for progress bar")
+                
+                # Store the window reference
+                self._progress_bar_win = bar_win
+            
+            # Clear the existing content
+            bar_win.erase()
+            
+            if spinner:
+                # Indeterminate progress with spinner
+                spinner_chars = ["◐", "◓", "◑", "◒"]
+                spinner_idx = int(time.time() * 3) % 4
                 bar_win.attron(self._color_pair)
+                status = f"Downloading {Path(filename).name}... ({spinner_chars[spinner_idx]})"
+                if len(status) > bar_width - 4:
+                    status = status[:bar_width - 8] + "..."
                 bar_win.addstr(2, 0, status)
                 bar_win.attroff(self._color_pair)
-                
-                # Bar
-                bar_win.attron(self._color_pair)
-                bar_win.addstr(3, 0, filled_bar + remaining_bar)
-                bar_win.attroff(self._color_pair)
             else:
-                # Spinner for indeterminate progress
-                spinner = ["◐", "◓", "◑", "◒"]
-                spinner_idx = int(time.time() / 100) % 4
-                
-                bar_win.attron(self._color_pair)
-                bar_win.addstr(2, 0, f"Downloading {Path(filename).name}... ({spinner[spinner_idx]})")
-                bar_win.attroff(self._color_pair)
+                # Determinate progress bar
+                if total > 0:
+                    # Calculate progress percentage
+                    progress_pct = min(current / total * 100, 100.0)
+                    percent = percent if percent is not None else progress_pct
+                    
+                    # Draw filled bar
+                    filled_width = int(bar_width - 1 * progress_pct / 100)
+                    filled_bar = "█" * filled_width
+                    remaining_bar = "░" * (bar_width - 1 - filled_width)
+                    
+                    # Status line: downloaded/total, percentage, speed, ETA
+                    speed_str = f"({format_size(speed):>6}/s)" if speed else ""
+                    eta_str = f" (ETA: {time_str})" if estimated_time > 0 else ""
+                    status = f"{format_size(current):>8}/{format_size(total):>8} {percent:>6.1f}% {speed_str}{eta_str}"
+                    
+                    # Truncate status if too long
+                    if len(status) > bar_width - 4:
+                        status = status[:bar_width - 8] + "..."
+                    
+                    bar_win.attron(self._color_pair)
+                    bar_win.addstr(2, 0, status)
+                    bar_win.attroff(self._color_pair)
+                    
+                    # Draw the bar
+                    bar_win.attron(self._color_pair)
+                    bar_win.addstr(3, 0, filled_bar + remaining_bar)
+                    bar_win.attroff(self._color_pair)
+                else:
+                    # Unknown total - show spinner instead
+                    spinner_chars = ["◐", "◓", "◑", "◒"]
+                    spinner_idx = int(time.time() * 3) % 4
+                    bar_win.attron(self._color_pair)
+                    status = f"Downloading {Path(filename).name}... ({spinner_chars[spinner_idx]})"
+                    if len(status) > bar_width - 4:
+                        status = status[:bar_width - 8] + "..."
+                    bar_win.addstr(2, 0, status)
+                    bar_win.attroff(self._color_pair)
             
-            bar_win.addstr(4, 0, "Press any key to continue...", curses.A_REVERSE)
+            # Refresh the window to display the changes
             bar_win.refresh()
             
-            #TODO: The download should not wait for user input.  This can probably just be removed.
-            # Wait for key
-            if self._validate_window(self._screen):
-                logger.debug("Progress bar: waiting for key press")
-                self.refresh()
-                try:
-                    key = self._screen.getch()
-                except (curses.error, OSError, EOFError) as e:
-                    logger.error(f"Progress bar getch() error: {e}")
-                    try:
-                        self._cleanup_terminal()
-                    except:
-                        pass
-                    # Fallback to console
-                    print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-                    input("Press Enter to continue...")
-                    key = -1  # Signal to break loop
-                logger.debug(f"Progress bar: key received={key}")
-                bar_win.erase()
-            else:
-                logger.warning("Screen invalid in progress bar, using fallback")
-                print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-                input("Press Enter to continue...")
-        
-        #TODO: The fallback logic should get implemented in _render_progress_bar_fallback().
+            logger.debug(f"Progress bar updated: {Path(filename).name} ({percent or 0:.1f}%)")
+            
         except curses.error as e:
             logger.error(f"Progress bar window error: {e}")
-            # If curses fails during input, clean up and return
+            # Clean up the window on error
             try:
+                if self._progress_bar_win is not None:
+                    self._progress_bar_win = None
                 self._cleanup_terminal()
             except:
                 pass
-            # Fallback to console
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-            input("Press Enter to continue...")
         except (curses.error, OSError, EOFError, TypeError) as e:
             logger.error(f"Unexpected error during progress bar: {e}")
+            # Clean up the window on error
             try:
+                if self._progress_bar_win is not None:
+                    self._progress_bar_win = None
                 self._cleanup_terminal()
             except:
                 pass
-            print(f"\nDownloading {Path(filename).name}... {current}/{total} ({percent or (current/total*100 if total else 0.0):.1f}%)")
-            input("Press Enter to continue...")
 
     def render_success(self, message: str) -> None:
         """Render success message.
